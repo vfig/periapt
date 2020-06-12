@@ -8,7 +8,7 @@ cDynArray<_T>::cDynArray(unsigned int _i)
 	if (_i != 0)
 	{
 		_resize(&m_data, sizeof(type), _i);
-		m_size = i;
+		m_size = _i;
 	}
 }
 
