@@ -57,13 +57,13 @@ LGLIB = -llg
 endif
 
 ARFLAGS = rc
-LDFLAGS = -mno-cygwin -mwindows -mdll -Wl,--enable-auto-image-base 
+LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base 
 LIBDIRS = -L. -L$(LGDIR) 
 LIBS = $(LGLIB) -luuid -lstdc++
 INCLUDES = -I. -I$(srcdir) -I$(LGDIR)
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
-CXXFLAGS =  -W -Wall -mno-cygwin -masm=att \
+CXXFLAGS =  -W -Wall -masm=att \
 	    -fno-pcc-struct-return -mms-bitfields
 DLLFLAGS =  --target i386-mingw32
 
