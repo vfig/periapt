@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<!-- 
+  Copyright (C) 2004 Tom N Harris <telliamed@whoopdedo.cjb.net>
+
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the 
+  "Software"), to deal in the Software without restriction, including 
+  without limitation the rights to use, copy, modify, merge, publish, 
+  distribute, sublicense, and/or sell copies of the Software, and to 
+  permit persons to whom the Software is furnished to do so.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-
+  INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN 
+  AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+  THE SOFTWARE.
+ -->
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<title>Script Writer's Guide</title>
+</head>
+<style type="text/css">
+body {
+  font: 10pt sans-serif;
+  color: black;
+  background-color: white;
+}
+h1 {
+  font: bold 12pt sans-serif;
+  margin-top: 1.6em;
+  margin-bottom: 0.8em;
+}
+a {
+  color: black;
+  border-bottom: solid 1px black;
+  margin-bottom: 0;
+  text-decoration: none;
+}
+p {
+  margin: 0.4em 0.6em;
+}
+ul {
+  margin: 0.4em 1.6em 0.8em;
+}
+</style>
+<body>
+
+<h1><a href="tutorial.html">Building OSM Modules</a></h1>
+<p>A description of how to build an OSM module.</p>
+<p>I apologize for not having a working MSVC project file. But it's even less fair to withhold useful information just because of a few pesky incompatibilities. I hope to soon rectify the omission. In the meantime, the <code>MSVC</code> folder contains the broken workspace and project files.</p>
+
+<h1>Structured Data Reference</h1>
+<ul>
+  <li><a href="thief1-data.html">Thief 1/G</a></li>
+  <li><a href="thief2-data.html">Thief 2</a></li>
+  <li><a href="shock2-data.html">System Shock 2</a></li>
+</ul>
+<p>Listings of all properties, links, and reactions along with field names and enumeration values. Each table begins with the internal name of the property/link/reaction and the public name as it appears in Dromed. (The public name of a link flavor is the same as the internal name.) If the data is a simple type, the last column describes the type. The field names and types for complex data are listed with a one-column indent. When a data type or field has an enumerated value or bitfield flags, the symbolic names and values are listed with a two-column indent.</p>
+<p>When using data fields, all characters, including white-space, are significant.</p>
+<p>These tables do not reflect the internal arrangement of the data. You should only use them with the structured data interfaces of the Dark Engine.</p>
+<p>The tables look best when printed in landscape mode.</p>
+
+</body>
+</html>

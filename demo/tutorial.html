@@ -1,0 +1,1529 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<!-- 
+  Copyright (C) 2004 Tom N Harris (telliamed@whoopdedo.cjb.net);
+
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the 
+  "Software"), to deal in the Software without restriction, including 
+  without limitation the rights to use, copy, modify, merge, publish, 
+  distribute, sublicense, and/or sell copies of the Software, and to 
+  permit persons to whom the Software is furnished to do so.
+  
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-
+  INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+  BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN 
+  AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+  IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+  THE SOFTWARE.
+ -->
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8">
+	<title>OSM Module Guide</title>
+	<meta name="generator" content="OpenOffice.org 1.1.0  (Win32)">
+	<meta name="author" content="Tom Harris">
+	<meta name="created" content="20041003;23535021">
+	<meta name="changedby" content="Tom Harris">
+	<meta name="changed" content="20041027;22115182">
+	<style>
+	<!--
+		body { font-family: "Lucida Sans", sans-serif; font-size: 12pt; }
+		h1 { font-family: "Lucida Sans", sans-serif; font-size: 14pt; }
+        code { font-family: "Courier New", monospace; white-space: pre; }
+        pre { margin: 1em 2em; background-color: #EEEEEE;
+              font-family: "Courier New", monospace; font-size: 10pt; }
+	-->
+	</style>
+</head>
+<body lang="en-US" dir="ltr">
+
+<h1>Introduction</h1>
+<p>When a person decides to learn how to create Thief (or System
+Shock) missions, he will inevitably be faced with three questions.
+The first of these is encountered at the very beginning: “What is
+Dromed and how do I use it?” I won’t be answering that question
+here. The second question that anyone learning Dromed eventually
+faces is: “Why is this damn thing not working?” This, I’m
+afraid, is more of a philosophical matter. But the third question,
+and one which I am most confident in answering, is: “What are
+scripts and how do I make my own?”</p>
+<p>In Thief, a script is a small program that runs in an environment
+with limited, but ample access to game features. The important part
+of this description is that scripts are limited. You are likely
+driven to scripting by the desire to create some complicated effect
+in the game. But if what you want is too complicated, or is outside
+the abilities of the game itself, a script isn’t going to help you.
+A script can’t do anything the game wasn’t designed to do. You
+can, however, do normal, mundane things, but in a different order, or
+with extra logic that makes it seem new.</p>
+<p>It is also important to note that a script is a computer program
+in the form of compiled machine code. This presents certain
+prerequisites for creating new scripts. You must have a full-featured
+compiler, and you must know a programming language; C++ in
+particular. While in other contexts, the term “script” refers to
+something that is light-weight and simple. I’m afraid that
+scripting the Dark Engine is neither.</p>
+<p>So if you have a compiler, are comfortable working with C++, and
+aren’t already discouraged, we can begin exploring the basic
+structure of a script. You probably already know that scripts are
+stored in OSM files. An OSM, which stands for Object Script Module,
+is just a DLL. (Or more generally, a Win32 PE object file for x86.)
+Each OSM can contain code for any number of scripts. Thief loads the
+OSM as a library, then calls an exported initialization function.
+This function provides an interface which Thief uses to load and
+execute the individual scripts. The scripts themselves can
+communicate with the game using an interface that was provided to the
+initialization function.</p>
+<p>On the other hand, if you're not so familiar with C++, then I you
+can find a decent enough guide at 
+<a href="http://www.silicontao.com/ProgrammingGuide/index.html">http://www.silicontao.com/ProgrammingGuide/index.html</a>. 
+There are more in-depth articles, including many covering COM, at 
+<a href="http://www.codeguru.com/Cpp/">http://www.codeguru.com/Cpp/</a>.</p>
+
+<h1>Script Module</h1>
+<p>The script module interface, and all interfaces used by scripts
+(and the scripts themselves, for that matter), are implemented as C++
+objects with methods borrowed from COM. They are not actually COM
+objects, however; they just look like it. In particular, all objects
+implement the <code>IUnknown</code> interface, and interfaces are
+identified using GUIDs. To create scripts, you need header files with
+declarations of the public interfaces, and definitions of the
+appropriate GUIDs. There are also some classes that you must
+implement yourself. If you download one of my script modules, the
+headers and source code are provided in the <u>lg Library</u>. You
+may use and distribute this library with your own scripts.</p>
+<p>The initialization function your OSM must export is declared as:</p>
+<pre>extern &quot;C&quot; __declspec(dllexport) __stdcall
+int ScriptModuleInit (const char* pszName,
+                      IScriptMan* pScriptManager, 
+                      MPrintfProc pfnMPrintf,
+                      IMalloc* pMalloc,
+                      IScriptModule** pOutInterface);
+</pre>
+<p>The function is called once when your module is loaded. Since an OSM
+is a regular DLL, you can also have a <code>DllMain</code> function,
+but it isn’t necessary.</p>
+<p>The first argument to the initialization function is the name of
+the script module. What you do with this isn’t too important. For
+now, we’ll save a copy of the string. The next argument is a
+pointer to the script manager. You must save this pointer somewhere
+where your scripts can access it. The easiest way is with a global
+variable. Although the script manager, like all public interfaces
+used in Thief, implements <code>IUnknown</code>, it is not necessary
+to increment the reference count. You can still increment it, just be
+sure to release it when your script module class is deleted. This
+argument should never be <code>NULL</code>.</p>
+<p>I’ll skip over the third argument for now, and describe the
+fourth: an allocator object. This is also an important interface that
+we’ll save in a global variable. The <code>IMalloc</code> interface
+is defined by COM, and Thief provides two implementations of it that
+scripts can use. The pointer that is passed to the initialization
+function is a standard allocator, and you can simply copy the pointer
+if it’s all you need. But there is also a debugging allocator, with
+extra checks for memory leaks and double-frees. You can get this
+version by calling <code>QueryInterface</code> with the GUID
+<code>IID_IDebugMalloc</code>.</p>
+<p>The last argument is where you store a pointer to your script
+module interface. The interface is an implementation of
+<code>IScriptModule</code>, which isn’t very complicated. You
+indicate the success or failure of the function with the return
+value. If you return <code>1</code>, then initialization was a
+success, and <code>pOutInterface</code> points to a valid object.
+Otherwise, return <code>0</code>. <code>pOutInterface</code> will be
+ignored in in this case.</p>
+<p>The argument I skipped over, <code>pfnMPrintf</code>, is a pointer
+to a function. The actual declaration of the function is:</p>
+<pre>
+int __cdecl MPrintf(const char*, ...);
+</pre>
+<p>As you can see, the function takes a variable number of arguments. It
+should be apparent that the function takes arguments in the style of
+<code>printf</code>. And you may also have guessed that the formatted
+text is printed to the monolog. While use of this function is
+optional, it certainly makes debugging easier. However, Thief uses a
+fixed-length buffer of 1000 bytes when formatting the string, so you
+need to be careful not to exceed this limit. (The other method of
+writing to the monolog, using <code>DebugScriptService</code>, is
+also limited by this buffer. So really, there’s no reason not to
+use the provided function.)</p>
+<p>Now we can write the actual initialization function:</p>
+<pre>typedef int (__cdecl *MPrintfProc)(const char*, ...);
+
+MPrintfProc g_pfnMPrintf = NULL;
+IMalloc *g_pMalloc = NULL;
+IScriptMan *g_pScriptManager = NULL;
+cScriptModule g_ScriptModule;
+
+extern &quot;C&quot; __declspec(dllexport) __stdcall
+int ScriptModuleInit (const char* pszName, IScriptMan* pScriptManager, void (*pfnMPrintf)(), 
+                      IMalloc* pMalloc, IScriptModule** pOutInterface)
+{
+    *pOutInterface = NULL;
+    g_pScriptManager = pScriptMan;
+#ifdef _DEBUG
+    pMalloc-&gt;QueryInterface(IID_IDebugMalloc, reinterpret_cast&lt;void**&gt;(&amp;g_pMalloc))
+    if (!g_pMalloc)
+        g_pMalloc = pMalloc;
+#else
+    g_pMalloc = pMalloc;
+#endif
+    g_pfnMPrintf = reinterpret_cast&lt;MPrintfProc&gt;(pfnMPrintf);
+    if (!g_pScriptManager || !g_pMalloc)
+        return 0;
+    g_ScriptModule.SetName(pszName);
+    g_ScriptModule.QueryInterface(IID_IScriptModule, reinterpret_cast&lt;void**&gt;(pOutInterface));
+    return 1;
+}
+</pre>
+<p>Most of the function involves copying the provided pointers to our
+global variables. There is a conditionally compiled block that
+attempts to retrieve an instance of the debugging allocator. It may
+not always be available, however, so we have to check for that and
+use the default allocator instead. We also use the <code>QueryInterface</code>
+method of our script module class to initialize <code>pOutInterface</code>.
+You may notice that the script module is a static global variable.
+This is unusual for most COM classes, but this isn’t really COM.
+Since there’s no need for more than one instance of the script
+module class, most OSMs simply use a static instance. There’s no
+requirement to do it this way, and you’re free to allocate your
+class dynamically if you prefer it.</p>
+<p>Let’s look at the script module class now:</p>
+<pre>class cScriptModule : public IScriptModule
+{
+public:
+    // IUnknown
+    STDMETHOD(QueryInterface)(REFIID,void**);
+    STDMETHOD_(ULONG,AddRef)(void);
+    STDMETHOD_(ULONG,Release)(void);
+    // IScriptModule
+    STDMETHOD_(const char*,GetName)(void);
+    STDMETHOD_(const sScrClassDesc*,GetFirstClass)(tScrIter*);
+    STDMETHOD_(const sScrClassDesc*,GetNextClass)(tScrIter*);
+    STDMETHOD_(void,EndClassIter)(tScrIter*);
+
+private:
+    int m_iRef;
+
+public:
+    virtual ~cScriptModule();
+    cScriptModule();
+    cScriptModule(const char* pszName);
+    void SetName(const char* pszName);
+
+private:
+    const sScrClassDesc* GetScript(unsigned int i);
+    char* m_pszName;
+    static const sScrClassDesc sm_ScriptsArray[];
+    static const unsigned int sm_ScriptsArraySize;
+};
+</pre>
+<p>You can probably guess at what most of this class does. The first
+three methods are the familiar <code>IUnknown</code> methods, along
+with the variable <code>m_iRef</code>. In this declaration, I used
+the <code>STDMETHOD</code> macros; they save typing and the code is
+clearer. You can get these macros from the standard header <code>objbase.h</code>.
+Including that should also give you interface declarations, the GUID
+type, and an overloaded <code>==</code> operator for it.</p>
+<p>Further down is the constructor and destructor for the class, and
+the method <code>SetName</code>. You would be correct in assuming
+that <code>SetName</code> copies the argument to <code>m_pszName</code>.
+The second constructor, the one that accepts an argument, simply
+calls <code>SetName</code>. The variable <code>m_pszName</code> is
+returned when the interface method <code>GetName</code> is called.
+Thief doesn’t particularly care, but I consider it polite to return
+from <code>GetName</code> the same string that was originally passed
+to my initialization function.</p>
+<p>The other three interface methods, and the two static variables at
+the end, work together to tell Thief what scripts this module can
+provide. The script information is stored in a <code>sScrClassDesc</code>
+structure. It looks like this:</p>
+<pre>typedef IScript* (__cdecl *ScriptFactoryProc)(const char*,int);
+struct sScrClassDesc
+{
+    char* pszModule;
+    char* pszClass;
+    char* pszBaseClass;
+    ScriptFactoryProc pfnFactory;
+};
+</pre>
+<p>Each structure stores the name of the module (<code>pszModule</code>),
+the name of the script (<code>pszClass</code>), the name of the
+script it is derived from (<code>pszBaseClass</code>), and a pointer
+to the function that will return new instances of the script. All of
+this can be written ahead of time and stored statically in the
+module.</p>
+<p>The base class of a script is the name of another script from
+which this one derives its behavior. This relationship, however, is
+pretty much irrelevant. Thief makes no special consideration of
+inheritance for scripts. If you want it, you have to do all the
+sub-classing in C++. In fact, <code>pszBaseClass</code> doesn’t
+even have to be a valid string. What you decide is the “base class”
+of your scripts is entirely arbitrary.</p>
+<p>Since we haven’t created any scripts yet, we’ll leave the
+scripts array undefined. Let’s fill in the parts of the class we’ve
+covered so far.</p>
+<pre>cScriptModule::~cScriptModule()
+{
+    if (m_pszName)
+        delete[] m_pszName;
+}
+
+cScriptModule::cScriptModule()
+        : m_iRef(1), m_pszName(NULL)
+{
+}
+
+cScriptModule::cScriptModule(const char* pszName)
+        : m_iRef(1), m_pszName(NULL)
+{
+    SetName(pszName);
+}
+
+HRESULT cScriptModule::QueryInterface(REFIID riid, void** ppout)
+{
+    if (riid == IID_IUnknown)
+        *ppout = static_cast&lt;IUnknown*&gt;(this);
+    else if (riid == IID_IScriptModule)
+        *ppout = static_cast&lt;IScriptModule*&gt;(this);
+    else
+        return E_NOINTERFACE;
+    reinterpret_cast&lt;IUnknown*&gt;(*ppout)-&gt;AddRef();
+    return S_OK;
+}
+
+ULONG cScriptModule::AddRef(void) 
+{
+    return ++m_iRef;
+}
+
+ULONG cScriptModule::Release(void)
+{
+    // This object is static, so we don't delete it.
+    if (m_iRef)
+        m_iRef--;
+    return m_iRef;
+}
+
+void cScriptModule::SetName(const char* pszName)
+{
+    if (m_pszName)
+        delete[] m_pszName;
+    if (pszName)
+    {
+        m_pszName = new char[strlen(pszName)];
+        strcpy(m_pszName, pszName);
+    }
+    else
+        m_pszName = NULL;
+}
+
+const char* cScriptModule::GetName(void)
+{
+    return m_pszName;
+}
+
+const sScrClassDesc* GetScript(unsigned int i)
+{
+    if (i &lt; sm_scriptsArraySize)
+        return &amp;sm_ScriptsArray[i];
+    else
+        return NULL;
+}
+</pre>
+<p>If you’ve worked with COM before, then most of this should be
+familiar. Even if you haven’t, it’s pretty obvious what’s going
+on. The one unusual function is <code>Release</code>. I’m going to
+be using this class for a static object, so I don’t want to delete
+it even if the reference count reaches zero. If you were going to use
+this class dynamically, you’d want the function to look like this:</p>
+<pre>ULONG cScriptModule::Release(void)
+{
+    if (m_iRef)
+        if (--m_iRef == 0)
+            delete this;
+    return m_iRef;
+}
+</pre>
+<p>I should also point out that <code>QueryInterface</code> uses the <code>==</code>
+operator to compare GUIDs. This operator needs to be overloaded,
+which should be done by your platform headers. If your headers are
+old or incomplete, then this won’t work.</p>
+<p>Now we get to the real work of the script module class. Whenever
+Thief needs to find out what scripts are available, it goes to each
+module and asks for a list of the scripts it provides. This begins
+with a call to <code>GetFirstClass</code>. Then <code>GetNextClass</code>
+is called repeatedly until all scripts have been found. The last
+function, <code>EndClassIter</code>, is called when the application
+wants to stop the iteration before all the scripts have been
+retrieved; it is not called when the iteration ends because of a call
+to <code>GetNextClass</code>. (Thief rarely does this, so
+<code>EndClassIter</code> usually goes unused.) The return value from
+these functions is either the pointer to a <code>sScrClassDesc</code>
+structure, or it is <code>NULL</code> to indicate that there are no
+more scripts. The argument is a pointer to a handle. A handle is a
+pointer-sized value of unspecified purpose. You get to use this
+handle for whatever you want, as long as it fits into 32-bits. (And
+if you need more space, you’re supposed to allocate a block of
+memory and use the pointer as the handle value.) The only thing we
+need to keep track of is the index into the scripts array; it can be
+stored directly into the handle. If you were using a pointer, then
+you would need to free the memory once the iteration had completed.
+This would be in <code>EndClassIter</code>, obviously, but also when
+<code>GetNextClass</code> returns <code>NULL</code>.</p>
+<p>Now we can finish our class. The static script array will be
+defined once we have a script to put in it.</p>
+<pre>const sScrClassDesc* cScriptModule::GetFirstClass(tScrIter* pIterParam)
+{
+    *reinterpret_cast&lt;unsigned int*&gt;(pIterParam) = 0;
+    return GetScript(0);
+}
+
+const sScrClassDesc* cScriptModule::GetNextClass(tScrIter* pIterParam) 
+{
+    const sScrClassDesc *pRet;
+    register unsigned int index = *reinterpret_cast&lt;unsigned int*&gt;(pIterParam);
+    pRet = GetScript(++index);
+    *reinterpret_cast&lt;unsigned int*&gt;(pIterParam) = index;
+    return pRet;
+}
+
+void cScriptModule::EndClassIter(tScrIter* pIterParam)
+{
+    // Nothing to do here
+}
+</pre>
+<p>And that’s a script module. If you were to initialize the script
+array to zero, then you would be able to compile this and load it in
+Dromed. It wouldn’t do anything, of course, since no scripts are
+defined. But this is all that is necessary for a complete OSM.</p>
+<p>In fact, let’s build the OSM now, before moving on to creating
+actual scripts. Because the details of building a project are
+different for each programming environment, I can’t provide
+step-by-step instructions. When possible, I’ll offer specific
+details for a particular compiler.</p>
+<p>As was mentioned previously, an OSM is simply a DLL. If you’re
+using an IDE, there should be a template for a standard Win32 DLL
+project. There’s no need for any special type library or foundation
+class. The target DLL will have 32-bit words and ANSI (8-bit)
+characters. An OSM does not usually have any use of Windows
+functions, so you can save compilation time by defining
+<code>WIN32_LEAN_AND_MEAN</code>; I also like to define <code>WINVER=0x400</code>
+and <code>WIN32_WINNT=0x400</code>. If you are compiling your module
+for debugging, you’ll want to also define <code>DEBUG</code>, and
+define <code>NDEBUG</code> otherwise. Finally, make sure that your
+OSM won’t depend on any unusual libraries. In the Cygwin
+environment, for example, you’ll want to specify the option
+<code><u>-mno-cygwin</u></code> to use the Mingw32 compiler, which links
+against <code>MSVCRT.DLL</code>.</p>
+<p>The most difficult part of compiling an OSM will be getting the <u>lg</u>
+headers to work right. The script interfaces weren’t originally
+written with portability in mind. If you’re using my version of the
+headers, you can use the file <code>config.h</code> to adjust for
+compiler inconsistencies. If you need to modify a header file, you
+should protect your changes using an <code>#ifdef</code> appropriate
+for your compiler. Right now, we’re only interested in the
+<code>IScriptModule</code> interface. But to use that, you also need
+to have <code>sScrClassDesc</code> and <code>IScript</code>.
+Including these will pull in other declarations. It’s usually
+sufficient to include <code>lg/types.h</code> then any headers with
+interfaces that you will be using specifically. (It is safe to
+include a header more than once.)</p>
+<p>Once you’ve ironed out any wrinkles with the <u>lg</u> headers, you can
+compile the object file. The next step is to link the OSM. There is
+only one function that needs to be exported, and we decorated it with
+<code>__declspec(dllexport)</code>. The decoration is enough to tell
+most linkers that we want the function exported. Still, some linkers
+want to see a DEF file. This will do for most cases:</p>
+<pre>EXPORTS
+    _ScriptModuleInit@20 =ScriptModuleInit
+</pre>
+<p>If you’re using GCC, you should use this one:</p>
+<pre>EXPORTS
+    _ScriptModuleInit@20 =ScriptModuleInit@20
+</pre>
+<p>The name of the initialization function has been decorated with <code>@20</code>
+because it is a <code>__stdcall</code> function. And it begins with
+an underscore, which most C/C++ functions have but is not normally
+shown. There is no ordinal number because we want the function to be
+exported by name. In any case, whether you use a DEF file or just the
+implicit declaration, the end result should be a DLL with an export
+table that looks something like this:</p>
+<pre>RVA      Ord. Hint Name
+-------- ---- ---- ----
+000014E0    1 0000 _ScriptModuleInit@20
+</pre>
+<p>It’s okay if there are other symbols being exported. (Borland likes
+to make <code>___CPPdebugHook</code> public.) The important part is
+that Dromed will be able to find this particular symbol in your OSM.</p>
+<p>When linking your OSM, the only libraries that are usually
+necessary (other than the <u>lg</u> library) is a C/C++ runtime, Kernel32,
+possibly User32, and Uuid which provides the GUIDs of standard
+interfaces such as IUnknown. There are many other libraries, such as
+OLE2 and ComDlg32, which aren’t going to be used by any of your
+scripts. (Unless you’re doing something really unusual. In which
+case, good luck!) If you’re using an IDE project, then some of
+these extra libraries may have been included by default; removing
+them can save time when building the module.</p>
+<p>These are the basic requirements for compiling a script module.
+There are other options to consider, of course. The level of
+optimization, how much debugging information to write, etc. You
+should avoid unusual options, and keep in mind that the baseline for
+compatibility is MSVC++ 6, which is what Dromed was originally
+compiled with.</p>
+
+<h1>Scripts</h1>
+<p>You have now, hopefully, compiled an empty script module. To add
+scripts to this module you need to do two things: create the script
+classes, and create the script factories. The script factory function
+was mentioned briefly when we described the <code>sScrClassDesc</code>
+structure. Since we need to have a class defined before we can create
+an instance of it, the factory function will again have to wait.</p>
+<p>Each script that we create is a class that implements the <code>IScript</code>
+interface. Here is the declaration of a typical script class:</p>
+<pre>class cScript : public IScript
+{
+public:
+    // IUnknown
+    STDMETHOD(QueryInterface)(REFIID,void**);
+    STDMETHOD_(ULONG,AddRef)(void);
+    STDMETHOD_(ULONG,Release)(void);
+    // IScript
+    STDMETHOD_(const char*,GetClassName)(void);
+    STDMETHOD_(long,ReceiveMessage)(sScrMsg*,sMultiParm*,eScrTraceAction);
+
+private:
+    int m_iRef;
+
+public:
+    virtual ~cScript();
+    cScript(const char* pszName, int iHostObjId);
+
+protected:
+    const char* m_szName;
+    int m_iObjId;
+
+private:
+    long ScriptPtrQuery(sPtrQueryMsg* pMsg);
+
+};
+</pre>
+<p>The astute C++ programmer will notice that much of this class could
+be shared among all scripts. And that’s exactly what we’ll do, by
+deriving all our scripts from this class, which will be our base
+class.</p>
+<p>The two methods specific to scripts are <code>GetClassName</code>
+and <code>ReceiveMessage</code>. The first should be obvious, it
+returns the name of the script. The name is originally passed to the
+constructor, we simply store the pointer in a member variable. The
+constructor also receives the object ID that this particular instance
+of the script is associated with. This is also saved, and will get
+used a lot in the scripts we make.</p>
+<p>The other method is <code>ReceiveMessage</code>. This is the real
+workhorse of the script. A script’s entire operation is based on
+responding to messages. These messages are generated by events in the
+game engine, actions taken by the player, and even by other scripts.
+Understanding scripts is all about understanding messages. For now,
+it’s enough to know that <code>ReceiveMessage</code> is called
+whenever a message is sent to this object.</p>
+<p>Let’s implement the obvious parts of this class now.</p>
+<pre>cScript::~cScript()
+{
+}
+
+cScript::cScript(const char* pszName, int iHostObjId)
+        : m_iRef(1), m_szName(pszName), m_iObjId(iHostObjId)
+{
+}
+
+HRESULT cScript::QueryInterface(REFIID riid, void** ppout)
+{
+    if (riid == IID_IUnknown)
+        *ppout = static_cast&lt;IUnknown*&gt;(this);
+    else if (riid == IID_IScript)
+        *ppout = static_cast&lt;IScript*&gt;(this);
+    else
+        return E_NOINTERFACE;
+    static_cast&lt;IUnknown*&gt;(*ppout)-&gt;AddRef();
+    return S_OK;
+}
+
+ULONG cScript::AddRef(void)
+{
+    return ++m_iRef;
+}
+
+ULONG cScript::Release(void)
+{
+    if (m_iRef)
+    {
+        if (--m_iRef == 0)
+            delete this;
+    }
+    return m_iRef;
+}
+
+const char* cScript::GetClassName(void)
+{
+    // Name MUST match the one in the list.
+    // Still, we don't want to toss a NULL pointer around, do we?
+    return (m_szName) ? m_szName : &quot;cScript&quot;;
+}
+</pre>
+<p>There’s nothing particularly unusual here. The <code>m_szName</code>
+variable is initialized with a simple pointer copy. Because our
+scripts will be created by our own factory functions, I’m taking
+advantage of this to always pass a static string to the constructor.
+If this weren’t the case, then you’d want to allocate a copy of
+the string for each instance.</p>
+<p>Also, none of these functions need to be defined in a derived
+class. The only thing we’ll have to write for that is a
+constructor, destructor, and <code>ReceiveMessage</code>. It’s only
+what happens there that differentiates your scripts. Let’s take
+care of that now, as well as the mysterious <code>ScriptPtrQuery</code>
+you’ve been wondering about.</p>
+<pre>long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
+{
+    long iRet = 0;
+    if (!stricmp(pMsg-&gt;message, &quot;ScriptPtrQuery&quot;))
+    {
+        iRet = ScriptPtrQuery(static_cast&lt;sPtrQueryMsg*&gt;(pMsg));
+    }
+    return iRet;
+}
+
+
+long cScript::ScriptPtrQuery(sPtrQueryMsg* pMsg)
+{
+    // Check class name 
+    if (!stricmp(pMsg-&gt;pszDestClass, GetClassName()))
+    {
+        *(pMsg-&gt;pScriptReceptacle) = reinterpret_cast&lt;void*&gt;(this);
+        return 0;
+    }
+    return 1;
+}
+</pre>
+<p>When this script receives a message, it compares the name of the
+message to the string <code>&quot;ScriptPtrQuery&quot;</code>. If it
+matches, then the function <code>ScriptPtrQuery</code> is called with
+message data. Notice that the we’re using <code>stricmp</code>,
+which compares strings case-insensitively. Most functions in Thief
+ignore the case of strings; you should do the same.</p>
+<p>The three arguments to <code>ReceiveMessage</code> are the message
+structure, a reply, and a trace flag. The trace flag is used for
+debugging, and advises the script to either print what it’s doing
+to the monolog, to cause a debugger interrupt, or to operate
+normally. Feel free to ignore this argument; I’ve actually never
+used it.</p>
+<p>The second argument, <code>pReply</code>, allows the script to
+reply to the message with a specific value. The return value of the
+function is a long integer, and only signifies whether the message
+was handled successfully or not. If there are no errors, you should
+return <code>0</code>, and non-zero (usually <code>1</code>)
+otherwise. But in some cases, a message expects a response from your
+script, this is supplied in the <code>pReply</code> argument. For
+example, when you send a script message from a pseudo-script, Thief
+will check the reply and will abort the pseudo-script if the reply is
+zero or “False”.</p>
+<p>The type of <code>pReply</code> is <code>sMultiParm</code>. That,
+along with the related <code>cMultiParm</code>, is like the <code>Variant</code>
+type of COM. A multi-param can be one of five types: integer, float,
+string, vector, or boolean. In the case of strings and vectors, the
+value stored in the multi-parm is a pointer to the data. The vector
+type, as you can guess, is a structure that consists of three floats,
+labeled <code>x</code>, <code>y</code>, and <code>z</code>. The
+pointer used for a string or a vector must be allocated using the
+<code>IMalloc</code> interface. And if you modify a multi-param, you
+have to check if the old value was a string or vector and free the
+memory it was using. The <code>cMultiParm</code> class provides
+methods for doing all this. You don’t have to be too concerned with
+getting the data type right. When Thief reads a multi-param, it will
+convert it to whatever type it wants. Of course, you shouldn’t pass
+a boolean when it wants a vector, but most other conversions can be
+reasonably performed; including parsing of strings into numeric
+values. The implementation of <code>cMultiParm</code> in my version
+of the <u>lg</u> library can also perform these conversions.</p>
+<p>Message data is passed to your script in a <code>sScrMsg</code>
+structure. This is actually a base-class with the information common
+to all messages. Many messages derive a class with more specific data
+in it. The <code>sScrMsg</code> class looks like this:</p>
+<pre>struct sScrMsg : public sScrMsgBase, public sPersistent
+{
+    int   from;
+    int   to;
+    const char* message;
+    int   time;
+    int   flags;
+    cMultiParm data;
+    cMultiParm data2;
+    cMultiParm data3;
+
+    sScrMsg();
+    virtual ~sScrMsg();
+
+    virtual int __thiscall Persistence();
+    virtual const char* __thiscall GetName() const {
+        return &quot;sScrMsg&quot;;
+    }
+};
+</pre>
+<p>Actually, I’m simplifying quite a bit. There are a number of
+peculiarities about this class. You can see here that the class
+inherits from both <code>sScrMsgBase</code> (which just provides the
+<code>IUnknown</code> interface) and <code>sPersistent</code>.
+Unfortunately, multiple-inheritance isn’t very portable. The
+methods of the class also use <code>__thiscall</code> instead of the
+usual <code>__stdcall</code> or <code>__cdecl</code>. This is
+something unique to MSVC++. So anyone not using that compiler will
+have difficulty creating instances of <code>sScrMsg</code>.
+Fortunately, most scripts won’t have to worry about it. As you’ll
+see later, there is a script interface for sending messages that
+doesn’t require you to use the <code>sScrMsg</code> class.</p>
+<p>The important part of the message structure is the data members.
+You have access to the object ID that the message is from, the object
+that the message was sent to (usually your own), the name of the
+message, the time at which the message was sent, some flags that can
+be ignored (I haven’t even figured out what they do, anyway!), and
+three multi-params with arbitrary data. These data fields are
+actually used pretty rarely. Where you will use them is when a
+message is sent from a pseudo-script.</p>
+<p>Time in Thief is measured relative to the simulation, or “Sim”
+for short. It tries to average 1 tick of sim-time for every
+millisecond, but this depends on the speed of the computer. There are
+also times when the sim is suspended, such as when the player is
+reading a book. Whenever Thief needs to measure time, it does so
+using sim-time. (This keeps the game pretty well synchronized. But
+when something needs to take place in real-time, such as playing a
+sound schema, there is no guarantee that sim-time can keep up.)</p>
+<p>For many messages, you’ll need to cast the pointer to a more
+specific class. In this case, the message we’re handling is
+<code>ScriptPtrQuery</code>. This is the relevant class:</p>
+<pre>struct sPtrQueryMsg : sScrMsg
+{
+    const char* pszDestClass;
+    void** pScriptReceptacle;
+
+    virtual const char* __thiscall GetName() const { return &quot;sPtrQueryMsg&quot;; }
+};
+</pre>
+<p>Two extra fields have been added. The <code>GetName</code> method has
+also been overloaded. As you can see, the method simply returns the
+name of the class. You can use this to respond to messages without
+having to know the actual names. For example, the messages caused by
+an act/react stimulus can have many different names, but they will
+all be instances of <code>sStimMsg</code>.</p>
+<p>The <code>ScriptPtrQuery</code> message is sent to ask for the
+pointer to a script instance. We first check if we are the script
+being requested by comparing the <code>pszDestClass</code> member to
+what we think our name is. If it matches, then we cast our instance
+pointer to <code>void*</code> and copy it to the <code>pScriptReceptacle</code>
+member. As you recall, <code>cScript</code> will be used as a base
+class for the other scripts we create. By handling this message here,
+all of our scripts will be able to respond to a <code>ScriptPtrQuery</code>
+message.</p>
+<p>Let’s look at another message: “<code>Sim</code>”. This
+message is simpler, and much more common.</p>
+<pre>struct sSimMsg : sScrMsg {
+    BOOL fStarting;
+
+    virtual const char* __thiscall GetName() const { return &quot;sSimMsg&quot;; }
+};
+</pre>
+<p>This message adds only one extra field. The <code>Sim</code> message
+is sent only twice during any mission: once when the mission starts,
+and once when it ends. The <code>fStarting</code> member will be <code>TRUE</code>
+for the first one, and <code>FALSE</code> for the second. Scripts are
+active all the time, even in Dromed’s editor mode. So it makes
+sense to only respond to certain messages while the simulation is
+active. If you have a script that is triggered when an object is
+unlocked, it would be inconvenient for it to activate every time you
+changed the “<code>Locked</code>” property in Dromed. Many
+scripts store a <code>m_bSim</code> variable with the value from the
+last <code>Sim</code> message. You may even want to add it to your
+base class.</p>
+<p>There are some cases when a script can be started while the
+simulation is currently running, such as by adding a meta-property to
+an object. The script won’t receive the first <code>Sim</code>
+message in this case. So you can’t rely on it all the time. This is
+why I said that understanding scripts means understanding messages.</p>
+<p>This is a complete script which could be used in the game. But
+since we’re only using it as a base class, there’s no point in
+telling our script module about it. The scripts that will be
+available for use will derive from this class. Let’s start with a
+script that simply prints the name of all messages it receives. The
+simplicity of this class demonstrates the advantage of inheritance.</p>
+<pre>class cScr_Echo : public cScript
+{
+public:
+    virtual ~cScr_Echo() { }
+    cScr_Echo(const char* pszName, int iHostObjId)
+            : cScript(pszName,iHostObjId)
+    { }
+
+    STDMETHOD_(long,ReceiveMessage)(sScrMsg*,sMultiParm*,eScrTraceAction);
+
+public:
+    static IScript* __cdecl ScriptFactory(const char* pszName, int iHostObjId);
+};
+</pre>
+<p>The derived script only needs to override <code>RecieveMessage</code>.
+We also are implementing the constructor and destructor inline. And
+we’ve finally gotten around to the <code>ScriptFactory</code>
+function. The factory function is declared the same way as the
+<code>typedef</code> used in <code>sScrClassDesc</code>. It is also
+declared as a static member function. This allows us to call the
+function without a class instance. The factory could also be a global
+function, but for the sake of organization, it’s convenient to have
+the factory associated with the script class it creates.</p>
+<p>When our script receives a message, we want it to print the name
+of the message on-screen. This means calling a function that is part
+of the game engine. Dromed provides a number of interfaces
+specifically designed for use by scripts: the script services. The
+function that displays text on-screen is in the DarkUI script
+service. In the <u>lg</u> headers, it looks like this:</p>
+<pre>extern  const GUID  IID_IDarkUIScriptService;
+interface IDarkUISrv : IScriptServiceBase
+{
+    STDMETHOD_(long,TextMessage)(const char *,int,int) PURE;
+    •
+    •
+    •
+};
+</pre>
+<p>The other methods of this interface have been omitted for brevity.
+The interface name is <code>IDarkUISrv</code>, and it is identified
+with the GUID <code>IID_IDarkUIScriptService</code>. To access the
+service, you call the <code>GetService</code> method of the script
+manager. We received a pointer to the script manager when our module
+was initialized. The <code>GetService</code> method accepts the GUID
+of a script service and returns its instance pointer, or <code>NULL</code>
+if the service can’t be found. <code>GetService</code> can only be
+used to retrieve registered script service interfaces. There are
+other global interfaces that aren’t script services; to get one of
+these you must use the <code>QueryInterface</code> method of the
+script manager.</p>
+<p>The <code>TextMessage</code> method has three arguments. The first
+is the string to display. The second is the color of the text. The
+color format is the same as the <code>COLORREF</code> type used in
+the Windows GDI. If you specify <code>0</code> for the color, then
+Thief uses a default color, which is usually white. The last argument
+is how long the text will be displayed on the screen, specified as
+milliseconds. This also has a default value of 5 seconds; it’s used
+if you pass <code>-1001</code> for the time.</p>
+<p>In this case, the arguments of the function make sense, and you
+might’ve been able to figure it out on your own. However, some
+interface functions have non-obvious arguments. You should be
+cautious when using a function that you don’t know all the
+arguments to. Nearly all of the script services are known, and you
+can do quite a lot with only services. Other interfaces can be used,
+and many have similar functions to the script services, but they’re
+not as well documented which makes it more likely that you’ll have
+problems. (Script services are often just wrappers around other,
+lower-level interfaces. You might think it’s faster to use the
+other interface directly, but it’s really not.)</p>
+<p>We can now implement the rest of the script.</p>
+<pre>long cScr_Echo::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
+{
+    long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
+
+    try
+    {
+        string sOutput = pMsg-&gt;message;
+        sOutput += &quot;(&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data);
+        sOutput += &quot;,&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data2);
+        sOutput += &quot;,&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data2);
+        sOutput += &quot;)&quot;;
+
+        IDarkUISrv* pUI = static_cast&lt;IDarkUISrv*&gt;(
+                              g_pScriptManager-&gt;GetService(IID_IDarkUIScriptService));
+        if (pUI)
+        {
+            pUI-&gt;TextMessage(sOutput.c_str(), 0, -1001);
+            pUI-&gt;Release();
+        }
+    }
+    catch (exception&amp; err)
+    {
+        // Don't pass exceptions out of the module.
+        if (g_pfnMPrintf)
+            g_pfnMPrintf(&quot;Error! %s\n&quot;, err.what());
+    }
+
+    return iRet;
+}
+</pre>
+<p>The first thing our script does is call the <code>ReceiveMessage</code>
+method of the super-class. Whether you do this before or after the
+rest of your script depends on how you want it to behave. It doesn’t
+make much difference for this script, so we do it first. We then
+create a string with the name of the message, and also the value of
+the three data parameters. I chose to use the standard <code>string</code>
+class since it’s so easy to use. This means there’s a chance an
+exception will be raised during our script. If the exception were to
+be passed out of our script and back to Thief, it would cause the
+game to unexpectedly quit; it might even crash if your C++ runtime
+isn’t compatible with MSVC++. So we guard this section of code with
+a <code>try-catch</code> block. When an exception occurs, we will
+print a message in the monolog.</p>
+<p>Once we’ve formatted the string, we call the <code>GetService</code>
+method of the script manager to get an instance of <code>IDarkUISrv</code>.
+Before using the interface, we make sure that the pointer is valid.
+Then we can call <code>TextMessage</code> using default values for
+color and time. Finally, the <code>IDarkUISrv</code> instance is
+released. You always have to release an interface when you no longer
+need it; just be sure you don’t release it too early, or more than
+once.</p>
+<p>That’s all of our script. All we need to do now is make it
+available to the script module. This is done with the script factory
+and the <code>sScrClassDesc</code> structure.</p>
+<pre>IScript* cScr_Echo::ScriptFactory(const char* pszName, int iHostObjId)
+{
+    if (stricmp(pszName,&quot;Echo&quot;) != 0)
+        return NULL;
+
+    // Use a static string, so I don't have to make a copy.
+    cScr_Echo* pscrRet = new(nothrow) cScr_Echo(&quot;Echo&quot;, iHostObjId);
+    return static_cast&lt;IScript*&gt;(pscrRet);
+}
+
+const sScrClassDesc cScriptModule::sm_ScriptsArray[] = {
+    { &quot;Demo&quot;, &quot;Echo&quot;, &quot;CustomScript&quot;, cScr_Echo::ScriptFactory }
+};
+const unsigned int cScriptModule::sm_ScriptsArraySize = 
+                sizeof(sm_ScriptsArray)/sizeof(sm_ScriptsArray[0]);
+</pre>
+<p>This factory function will be virtually identical for each script you
+create. For this script, I’m passing a static string to the script
+constructor. This let’s me get away with not copying the name in
+each instance. And while it’s highly unlikely that the factory will
+be called with a different name, since I use a separate factory
+function for each script class, I check the name anyway. You could
+pass the name directly from the factory function to the script
+instance, but you should make a copy of the string in that case,
+since we can’t be sure that the string the game uses is constant.</p>
+<p>When creating the script instance, I use the <code>new</code>
+operator with the <code>nothrow</code> specifier. That way, if
+there’s an error, <code>new</code> will return a <code>NULL</code>
+pointer rather than throw an exception. The script factory also
+returns <code>NULL</code> on error, so this behavior is preferred.</p>
+<p>We’ve also created the static variables <code>sm_ScriptsArray</code>
+and <code>sm_ScriptsArraySize</code> for use by the script module
+class. For the size, we use a shortcut that calculates the number of
+elements in the array dynamically. The total size of an array is the
+number of elements in the array multiplied by the size of a single
+element. So the number of elements can be calculated by dividing the
+size of the array by the size of a single element in the array. Your
+compiler will recognize that this is a constant number that can be
+calculated ahead of time and write the computed value in the
+variable. So when we add scripts to the array, we don’t have to
+modify the size variable.</p>
+<p>The new script module can now be compiled. There’s a bit more
+code, and you’ve probably organized the classes into separate
+source files. (If you haven’t, then you should.) But building the
+OSM is essentially the same as was previously covered. You’ll need
+to make sure you’ve included the appropriate headers, both from the
+<u>lg</u> headers, and also your C++ runtime. The filename of the script
+module should be “<code>Demo.osm</code>” to match the name that
+we’ve written in the script description.</p>
+<p>Try out the module and, hopefully, it will work as expected. If
+you haven’t familiarized yourself with the various script messages
+yet, you can use this script to see some of the messages that are
+caused by events in the game.</p>
+<p>I don’t like the message being displayed for 5 seconds, though.
+To make the script more flexible, let’s have the time be read from
+a property on the object. Dromed doesn’t allow us to define new
+property types, but there are many built-in properties that can be
+used by scripts. For storing a time value, the property <code>ScriptTiming</code>
+makes the most sense.</p>
+<p>When editing a property in Dromed, you select the name from a
+menu. You may go to the sub-menu named “<code>Script</code>” then
+select the item named “<code>Timing</code>”. But internally, that
+property is identified with the name “<code>ScriptTiming</code>”.
+As a more extreme example, the property that is “<code>Renderer\Dynamic
+Light</code>” in Dromed is named “<code>SelfLit</code>”
+internally. It’s the internal name that scripts must use. You can
+get a list of all the properties by typing the command “<code>list_props</code>”
+in Dromed; the information will be displayed in the monolog.</p>
+<p>To access an object’s properties from a script, you use the
+<code>IPropertySrv</code> interface. It is defined as:</p>
+<pre>extern  const GUID  IID_IPropertyScriptService;
+interface IPropertySrv : IScriptServiceBase
+{
+    STDMETHOD_(cMultiParm*,Get)(cMultiParm &amp;,object,const char *,const char *) PURE;
+    STDMETHOD_(long,Set)(object,const char *,const char *,const cMultiParm &amp;) PURE;
+    STDMETHOD_(long,Set)(object,const char *,const cMultiParm &amp;) PURE;
+#if (_DARKGAME == 2) || (_DARKGAME == 3)
+    STDMETHOD_(long,SetLocal)(object,const char *,const char *,const cMultiParm &amp;) PURE;
+#endif
+    STDMETHOD_(long,Add)(object,const char *) PURE;
+    STDMETHOD_(long,Remove)(object,const char *) PURE;
+    STDMETHOD_(long,CopyFrom)(object,const char *,object) PURE;
+    STDMETHOD_(int,Possessed)(object,const char *) PURE;
+};
+</pre>
+<p>The <code>SetLocal</code> method in this interface is guarded by a
+conditional preprocessor statement. While the method of creating
+scripts is the same for all Dark Engine games, the actual interfaces
+are not all the same. Up until now, we’ve used interfaces that are
+command to all the games. But <code>IPropertySrv</code> is different
+in Thief 1/Gold than it is in Thief 2 and System Shock 2. To
+accommodate these differences, the preprocessor symbol <code>_DARKGAME</code>
+is set to the version of the game that is being compiled for. Set it
+to <code>1</code> for Thief 1/Gold, <code>2</code> for Thief 2, and <code>3</code>
+for System Shock 2. This also means that, unless you can somehow
+avoid using any incompatible interfaces, your script module will only
+be usable with one particular game.</p>
+<p>You will also notice that there are two <code>Set</code> methods,
+where the first takes an additional string argument. The multi-param
+data type only represents one of five simple types, but properties
+can be more complex. To handle complex properties, you reference the
+data by both the property name and the field name. The field names
+for a property are exactly the labels used for the dialog box in
+Dromed. (Field names often have spaces and non-alphanumeric
+characters in them.) Remember that the vector data type will appear
+as three boxes labelled <code>X</code>, <code>Y</code>, and <code>Z</code>.
+If a property is just a simple type, or only has one field, then you
+set the field name to <code>NULL</code>.</p>
+<p>For this script we only need to use two methods: <code>Possessed</code>
+and <code>Get</code>. The first tells us whether a property exists or
+not, and the second retrieves it. The first two arguments to these
+functions are the object ID we’re working with, and the name of the
+property. For <code>Get</code>, these are actually the second and
+third arguments because the first argument is the return value.
+(There’s another pesky MSVC incompatibility involved here. The
+interface is written this way because it works with all compilers.)
+The last argument to <code>Get</code> is the name of the field. The
+<code>ScriptTiming</code> property is just an integer, so we set this
+to <code>NULL</code>.</p>
+<p>Our <code>ReceiveMessage</code> function now looks like this:</p>
+<pre>long cScr_Echo::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
+{
+    long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
+
+    try
+    {
+        string sOutput = pMsg-&gt;message;
+        sOutput += &quot;(&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data);
+        sOutput += &quot;,&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data2);
+        sOutput += &quot;,&quot;;
+        sOutput += static_cast&lt;const char*&gt;(pMsg-&gt;data2);
+        sOutput += &quot;)&quot;;
+
+        int iTime = -1001;
+        IPropertySrv* pProps = static_cast&lt;IPropertySrv*&gt;(
+                                   g_pScriptManager-&gt;GetService(IID_IPropertyScriptService));
+        if (pProps)
+        {
+            if (pProps-&gt;Possessed(m_iObjId, &quot;ScriptTiming&quot;))
+            {
+                cMultiParm mpTiming;
+                pProps-&gt;Get(mpTiming, m_iObjId, &quot;ScriptTiming&quot;, NULL);
+                if (static_cast&lt;int&gt;(mpTiming) &gt; 0)
+                {
+                    iTime = mpTiming;
+                }
+            }
+            pProps-&gt;Release();
+        }
+
+        IDarkUISrv* pUI = static_cast&lt;IDarkUISrv*&gt;(
+                              g_pScriptManager-&gt;GetService(IID_IDarkUIScriptService));
+        if (pUI)
+        {
+            pUI-&gt;TextMessage(sOutput.c_str(), 0, iTime);
+            pUI-&gt;Release();
+        }
+    }
+    catch (exception&amp; err)
+    {
+        // Don't pass exceptions out of the module.
+        if (g_pfnMPrintf)
+            g_pfnMPrintf(&quot;Error! %s\n&quot;, err.what());
+    }
+
+    return iRet;
+}
+</pre>
+<p>The changes are the added variable <code>iTime</code>, and the use of
+<code>IPropertySrv</code>. Notice how the way we use <code>IPropertySrv</code>
+is very similar to how <code>IDarkUISrv</code> is used.</p>
+<p>The script acts the same as before, but now you can add the
+<code>ScriptTiming</code> property to the object to adjust how long
+the text will stay on the screen. Another way you could modify the
+script is to make it also print the message to the monolog. Try it
+out, but instead of calling the <code>g_pfnMPrintf</code> pointer
+(too easy), use the <code>IDebugScrSrv</code> interface.</p>
+
+<h1>Script Manager</h1>
+<p>One of the more ubiquitous types of script is the relay. The
+purpose of a relay is to receive a message from a trigger, manipulate
+the message in some way, then re-send the message to a trap. Relay
+networks usually work with the messages “<code>TurnOn</code>” and
+“<code>TurnOff</code>”, and are connected using <code>ControlDevice</code>
+links. (System Shock 2 uses the <code>SwitchLink</code> flavor
+instead of <code>ControlDevice</code>. I will continue to use
+<code>ControlDevice</code> in this document, but the same things
+apply to <code>SwitchLink</code> links.)</p>
+<p>Handling the incoming messages has already been covered. Sending
+messages is accomplished with the script manager interface. The
+script manager, which is likely the only interface you’ll use that
+isn’t a script service, has many methods related to the operation
+of scripts. Not all of these are meant to be used by scripts
+themselves. The methods that you do want to use are for sending
+messages, setting timers, and storing persistent data. All three of
+these are used in the next script: a relay that pauses between
+messages. The script will pass <code>TurnOn</code> messages, but will
+wait at least 1 second before sending another message. We do this by
+counting the number of <code>TurnOn</code> messages that are
+received; when the timer we set expires, a message is relayed and the
+counter decremented. We’ll respond to <code>TurnOff</code> messages
+by decrementing the counter, and cancelling the timer if it reaches
+0.</p>
+<p>The script class is, as expected, mostly the same as the previous
+scripts.</p>
+<pre>class cScr_SlowRelay : public cScript
+{
+public:
+    virtual ~cScr_SlowRelay() { }
+    cScr_SlowRelay(const char* pszName, int iHostObjId)
+        : cScript(pszName,iHostObjId)
+    { }
+
+    STDMETHOD_(long,ReceiveMessage)(sScrMsg*,sMultiParm*,eScrTraceAction);
+
+public:
+    static IScript* __cdecl ScriptFactory(const char* pszName, int iHostObjId);
+
+private:
+    void SetTimer(void);
+};
+</pre>
+<p>The script factory and entry in the scripts array should be obvious
+to you now.</p>
+<p>The <code>ReceiveMessage</code> method needs to respond to three
+messages: <code>TurnOn</code>, <code>TurnOff</code>, and <code>Timer</code>.</p>
+<pre>long cScr_SlowRelay::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
+{
+    long iRet = 0;
+    cMultiParm mpData;
+    sScrDatumTag dataInfo;
+    dataInfo.objId = m_iObjId;
+    dataInfo.pszClass = m_szName;
+
+    if (!stricmp(pMsg-&gt;message, &quot;Timer&quot;))
+    {
+        if (!stricmp(static_cast&lt;sScrTimerMsg*&gt;(pMsg)-&gt;name, &quot;Delay&quot;))
+        {
+            •
+            •
+            •
+        }
+    }
+    else if (!stricmp(pMsg-&gt;message, &quot;TurnOn&quot;))
+    {
+        •
+        •
+        •
+    }
+    else if (!stricmp(pMsg-&gt;message, &quot;TurnOff&quot;))
+    {
+        •
+        •
+        •
+    }
+    else
+        iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
+
+    return iRet;
+}
+</pre>
+<p>Timers are named so you can have multiple timers active. You also
+don’t want to interfere with the timers set by other scripts that
+the object is using. (Although, to be honest, “<code>Delay</code>”
+is too common a name.) There is no extra data for <code>TurnOn</code>
+and <code>TurnOff</code> messages.</p>
+<p>The task of sending the messages is carried-out when the timer
+expires.</p>
+<pre>
+        ILinkSrv* pLS = static_cast&lt;ILinkSrv*&gt;(
+                                g_pScriptManager-&gt;GetService(IID_ILinkScriptService));
+        ILinkToolsSrv* pLTS = static_cast&lt;ILinkToolsSrv*&gt;(
+                                g_pScriptManager-&gt;GetService(IID_ILinkToolsScriptService));
+        if (pLS &amp;&amp; pLTS)
+        {
+            linkset lsLinks;
+            pLS-&gt;GetAll(lsLinks, pLTS-&gt;LinkKindNamed(&quot;ControlDevice&quot;), m_iObjId, 0);
+            for (true_bool __p; lsLinks.AnyLinksLeft(__p), __p; lsLinks.NextLink())
+            {
+                sLink slInfo;
+                lsLinks.query-&gt;Link(&amp;slInfo);
+                g_pScriptManager-&gt;PostMessage2(m_iObjId, slInfo.dest, &quot;TurnOn&quot;, 
+                                                  cMultiParm(), cMultiParm(), cMultiParm());
+            }
+            pLTS-&gt;Release();
+            pLS-&gt;Release();
+        }
+</pre>
+<p>The link service is used to iterate over all the <code>ControlDevice</code>
+links that originate from this object. Most interfaces will interpret
+an ID of <code>0</code> as meaning any link or object. When an
+interface returns ID <code>0</code>, that means the link or object
+doesn’t exist, or there was some error.</p>
+<p>We send the message using the <code>PostMessage2</code> method of
+the script manager. There are four methods for sending messages:
+<code>SendMessage</code>, <code>PostMessage</code>, <code>SendMessage2</code>,
+and <code>PostMessage2</code>. The first two use a <code>sScrMsg</code>
+instance that you provide yourself. This is not a very efficient way
+to send messages, however. (There are also some compatibility
+issues.) But that’s the only way to send a message with extra data.
+If you don’t need more than the basic message features, which you
+usually won’t, then the second two methods will do the work of
+constructing the message structure using values you supply.</p>
+<p>The difference between sending and posting a message is that a
+post will only prepare the message then return without waiting for
+the message to be delivered. You don’t get to see the reply from a
+posted message, but your script will run quicker. You would send a
+message if you need to receive a response, or want to wait until the
+message is delivered and processed before continuing.</p>
+<p>That said, there’s actually a much simpler way of sending
+messages. I just showed you this to demonstrate the use of links and
+the PostMessage2 method. But in the link service is a method called
+BroadcastOnAllLinks. It does just what the above code does with a
+single call.</p>
+<pre>
+            pLS-&gt;BroadcastOnAllLinks(m_iObjId, &quot;TurnOn&quot;, pLTS-&gt;LinkKindNamed(&quot;ControlDevice&quot;));
+</pre>
+<p>There is another version of the method that accepts an extra
+multi-param argument. That version will compare the data associated
+with each link to the argument and will only relay the message if
+they match. This is most often used with <code>ScriptParams</code>
+links. The data is compared case-sensitively, though, so you may opt
+to do it manually as I previously described. Also, the messages that
+are sent will have the first data multi-param set to the comparison
+argument.</p>
+<p>Going back to the beginning of the <code>ReceiveMessage</code>
+method, you’ll see that a <code>sScrDatumTag</code> structure is
+created and initialized. This is used when we retrieve and set the
+value of persistent script data. The Dark Engine doesn’t provide a
+way for scripts to marshal data the way that COM objects can.
+Instead, the script manager lets you manually store multi-param data
+in a database that will be saved with the mission. Each item is
+identified with an object ID, a class (script) name, and the name of
+the data.</p>
+<p>Once we’ve sent a round of messages, we need to decide whether
+there are more messages we need to relay.</p>
+<pre>
+        dataInfo.pszName = &quot;Timer&quot;;
+        g_pScriptManager-&gt;ClearScriptData(&amp;dataInfo, &amp;mpData);
+
+        dataInfo.pszName = &quot;Count&quot;;
+        if (g_pScriptManager-&gt;IsScriptDataSet(&amp;dataInfo))
+        {
+            g_pScriptManager-&gt;GetScriptData(&amp;dataInfo, &amp;mpData);
+            int iCount = static_cast&lt;int&gt;(mpData) - 1;
+            if (iCount &gt; 0)
+            {
+                mpData = iCount;
+                g_pScriptManager-&gt;SetScriptData(&amp;dataInfo, &amp;mpData);
+                SetTimer();
+            }
+            else
+            {
+                g_pScriptManager-&gt;ClearScriptData(&amp;dataInfo, &amp;mpData);
+            }
+        }
+</pre>
+<p>All we’re doing is subtracting 1 from the “<code>Count</code>”
+variable. The variable will be saved and another round of the timer
+set if the counter is greater than zero, otherwise we just erase the
+variable. This is basically the opposite of what happens when <code>TurnOn</code>
+is received. That looks like this:</p>
+<pre>
+        int iCount = 0;
+        dataInfo.pszName = &quot;Count&quot;;
+        if (g_pScriptManager-&gt;IsScriptDataSet(&amp;dataInfo))
+        {
+            g_pScriptManager-&gt;GetScriptData(&amp;dataInfo, &amp;mpData);
+            iCount = static_cast&lt;int&gt;(mpData);
+        }
+        mpData = iCount + 1;
+        g_pScriptManager-&gt;SetScriptData(&amp;dataInfo, &amp;mpData);
+
+        dataInfo.pszName = &quot;Timer&quot;;
+        if (!g_pScriptManager-&gt;IsScriptDataSet(&amp;dataInfo))
+            SetTimer();
+</pre>
+<p>After incrementing the counter, we need to set the delay timer, but
+not if it’s already active. The “<code>Timer</code>” data will
+be set if a timer is active. Setting the timer is carried out in our
+own <code>SetTimer</code> method.</p>
+<pre>void cScr_SlowRelay::SetTimer(void)
+{
+    unsigned long iTime = 1000;
+    IPropertySrv* pProps = static_cast&lt;IPropertySrv*&gt;(
+                               g_pScriptManager-&gt;GetService(IID_IPropertyScriptService));
+    if (pProps)
+    {
+        if (pProps-&gt;Possessed(m_iObjId, &quot;ScriptTiming&quot;))
+        {
+            cMultiParm mpTime;
+            pProps-&gt;Get(mpTime, m_iObjId, &quot;ScriptTiming&quot;, NULL);
+            iTime = (static_cast&lt;int&gt;(mpTime) &gt; 100) ? static_cast&lt;int&gt;(mpTime) : 100;
+        }
+        pProps-&gt;Release();
+    }
+    
+    tScrTimer hDelay = g_pScriptManager-&gt;SetTimedMessage2(m_iObjId, &quot;Delay&quot;, iTime, 
+                                                             kSTM_OneShot, cMultiParm());
+    cMultiParm mpDelay = reinterpret_cast&lt;int&gt;(hDelay);
+    sScrDatumTag dataInfo;
+    dataInfo.objId = m_iObjId;
+    dataInfo.pszClass = m_szName;
+    dataInfo.pszName = &quot;Timer&quot;;
+    g_pScriptManager-&gt;SetScriptData(&amp;dataInfo, &amp;mpDelay);
+}
+</pre>
+<p>The duration of the timer is read from a property for flexibility.
+The timer is created by the method <code>SetTimedMessage2</code> of
+the script manager. It creates a <code>Timer</code> message with a
+specified name. There is also a <code>SetTimedMessage</code> method
+that lets you use any message type, but it doesn’t return a timer
+handle which we want. A timer handle is a non-zero value that
+identifies an active timer. If you have the handle to a timer then
+you can abort it using the <code>KillTimedMessage</code> method. The
+value of a handle doesn’t mean anything, but you can save it as
+script data (by casting to <code>int</code>) and it will still be
+valid when the mission is restarted. It also lets you know whether or
+not a timer is active.</p>
+<p>A timed message can either be one-shot or periodic. A one-shot
+timer will be killed when it expires, while a periodic timer
+automatically restarts itself until it is explicitly stopped using
+<code>KillTimedMessage</code>.</p>
+<p>The last part of our script is the <code>TurnOff</code> handler.
+We will decrement the counter much like was done for the <code>Timer</code>
+message, but we also have to consider whether we need to stop the
+active timer.</p>
+<pre>
+        dataInfo.pszName = &quot;Count&quot;;
+        if (g_pScriptManager-&gt;IsScriptDataSet(&amp;dataInfo))
+        {
+            g_pScriptManager-&gt;GetScriptData(&amp;dataInfo, &amp;mpData);
+            int iCount = static_cast&lt;int&gt;(mpData) - 1;
+            if (iCount &gt; 0)
+            {
+                mpData = iCount;
+                g_pScriptManager-&gt;SetScriptData(&amp;dataInfo, &amp;mpData);
+            }
+            else
+            {
+                g_pScriptManager-&gt;ClearScriptData(&amp;dataInfo, &amp;mpData);
+                dataInfo.pszName = &quot;Timer&quot;;
+                if (g_pScriptManager-&gt;IsScriptDataSet(&amp;dataInfo))
+                {
+                    g_pScriptManager-&gt;GetScriptData(&amp;dataInfo, &amp;mpData);
+                    tScrTimer hDelay = reinterpret_cast&lt;tScrTimer&gt;(static_cast&lt;int&gt;(mpData));
+                    g_pScriptManager-&gt;KillTimedMessage(hDelay);
+                    g_pScriptManager-&gt;ClearScriptData(&amp;dataInfo, &amp;mpData);
+                }
+            }
+        }
+</pre>
+<p>While there is no harm from trying to kill a timer that doesn’t
+exist, there is the possibility that a handle value may be assigned
+to another timer after a previous one is stopped. You should clear
+the script data, or set the handle to 0 after a timer is stopped.</p>
+<p>Because of the use of script data, the source code of this script
+appears quite complex. But the basic logic of the script is not
+difficult to understand. And, unlike the previous scripts we wrote,
+this one can be a useful part of an actual mission.</p>
+
+<h1>Advanced Techniques</h1>
+<p>All of the steps necessary to use script data can be cumbersome,
+however. You will almost certainly want to use some sort of
+wrapper-class that makes using persistent variables transparent. One
+implementation is provided in the file <code>scriptvars.h</code>
+included with this document.</p>
+<p>The <code>scriptvars.h</code> file contains class definitions for
+using a script data variable as an integer, a float, string, vector, 
+or a handle such as for a timer.</p>
+<p>Declaring a script data variable is straightforward, except for
+the handle class which needs to know the specific handle type.</p>
+<pre>
+    script_int m_integer;
+    script_float m_float;
+    script_str m_string;
+    script_vec m_vector;
+    script_handle&lt;tScrTimer&gt; m_timerhandle;
+</pre>
+<p>The internal names used for the script data are specified when you
+initialize the member variable.</p>
+<pre>    cScr_MyScript::cScr_MyScript(const char* pszName, int iHostObjId)
+        : cScript(pszName, iHostObjId), m_integer(&quot;cScr_MyScript&quot;,&quot;m_integer&quot;,iHostObjId)
+    { }
+</pre>
+<p>I’ve only shown the integer initialization, but the same can be
+used for any data type. You can also use a macro to simplify
+initialization.</p>
+<pre>#define SCRIPT_VAROBJ(className,varName,objId)  varName(#className, #varName, objId)
+
+    cScr_MyScript::cScr_MyScript(const char* pszName, int iHostObjId)
+        : cScript(pszName, iHostObjId), SCRIPT_VAROBJ(cScr_MyScript,m_integer,iHostObjId)
+    { }
+</pre>
+<p>Finally, each script data variable needs to be set to an initial
+value. You should do this when handling the <code>BeginScript</code>
+message. By default, the <code>Init</code> method sets the data to <code>0</code> 
+or an empty string. You can pass a value that should be used instead, 
+except for handles which are always initialized to <code>NULL</code>.
+The vector type passes values using a pointer to a <code>mxs_vector</code> 
+struct.</p>
+<pre>long cScr_MyScript::OnBeginScript(sScrMsg* pMsg)
+{
+    m_integer.Init();
+    m_float.Init(1.0);
+    m_string.Init(&quot;Foo&quot;);
+    mxs_vector v = { 1.0, 1.0, 0.0 };
+    m_vector.Init(&amp;v);
+    m_timerhandle.Init();
+    return 0;
+}
+</pre>
+<p>Now the variables can be used as if they were normal types. If you
+want to erase the data explicitly, the <code>Clear</code> method is
+provided. The pointer returned from a string variable will invalidated 
+the next time the variable is read or when it goes out-of-scope. 
+Clearing the script data is safe.</p>
+<p>Another helpful wrapper-class is for the script services. The
+included version of the <u>lg</u> headers has a template class in
+<code>interface.h</code> that automatically releases an interface
+when it goes out-of-scope.</p>
+<p>Two classes are defined: one for script services, and another for
+all other interfaces. They are both used similarly.</p>
+<pre>
+    SService&lt;IObjectSrv&gt; pObjSrv(g_pScriptManager);
+    SInterface&lt;ILinkManager&gt; pLinkMan(g_pScriptManager);
+    SInterface&lt;IRelation&gt; pRel;
+    pRel = pLinkMan-&gt;GetRelationNamed(&quot;ControlDevice&quot;);
+    if (pRel)
+    {
+    }
+</pre>
+<p>The first two lines show the most common use of the classes. As you
+can see, you must already have a pointer to the script manager
+interface. The <code>SService</code> class uses <code>GetService</code>
+to retrieve the interface, while <code>SInterface</code> uses the
+<code>QueryInterface</code> method. You can also use <code>SInterface</code>
+to wrap pointers that are returned from other interface methods. Note
+that if you initialize the class with a pointer, as opposed to simply
+assigning to it, then the <code>AddRef</code> method of the interface
+will be called.</p>
+<p>Using the wrapped interface is the same as if you had a direct
+pointer. If cast to <code>bool</code>, then it returns whether
+the interface pointer is <code>NULL</code>. The <code>Release</code>
+method of the interface will be called once the variable goes
+out-of-scope. This means that you can break out of a loop, return, or
+throw an exception without worrying about which interfaces you’re
+still holding.</p>
+<p>If you use the wrappers, then you should use a <code>try-catch</code>
+statement because an exception will be thrown if the interface can’t
+be found by <code>GetService</code> or <code>QueryInterface</code>.</p>
+<p>Another candidate for improving both the performance of your
+scripts, as well as the ease of writing new scripts, is how you
+determine which script messages to respond to. We’ve been using
+simple string comparison functions so far, but this can be very slow,
+and cumbersome when dealing with a large number of messages. A better
+way to handle messages is to use a data structure that can compare
+strings using a hash function. This is how the original scripts work,
+and also how I write scripts in the modules that I release. (I do
+things a little differently than the original scripts, however.)
+Using a hash table is much too complicated for this document. If
+you’d like to explore this feature, you can download my public
+scripts and examine the source file <code>Script.cc</code>, which uses
+the map class from the standard template library.</p>
+
+<h1>Conclusion</h1>
+<p>With these techniques, and demonstrated classes, you have all the
+tools you need to create script modules for Thief, Thief 2, and
+System Shock 2. But you are still only halfway toward making useful
+scripts. There is still the myriad interface functions that you need
+to learn so your scripts can interact usefully, and effectively with
+the game engine. You can learn this by examining the header files,
+script source code that has been made public, and by talking with
+other script writers. But the best way is probably to experiment on
+your own. (By the time you put your own scripts into a mission,
+you’ll likely be very familiar with the Dromed crash dump.)</p>
+<p>If you are writing scripts for System Shock 2, however, then you
+must be extra mindful of the differences between it and Thief. There
+are differences in all three games, but Thief 1/G and Thief 2 are so
+closely related that they can be treated almost identically. But
+System Shock 2 added many things that aren’t found in the other
+games, or that are unused even if present. You can still share
+scripting information with other programmers; you just may not be
+able to apply it directly.</p>
+
+<h1>Addendum</h1>
+<p style="font-style: italic">The following paragraphs are quite technical and may be ignored
+if you would rather not read a bunch of jargon. None of it is
+vital for understanding scripts or script modules.</p>
+<p>Something that you won’t encounter when building a regular
+application, and not always when building a DLL either, is the
+base-address of the module. Every executable module that Windows loads
+for an application needs to sit at a unique and non-overlapping
+base-address. When creating a DLL, a default address is written as a
+reference. When it’s loaded, Windows first tries to use the default
+address, and if it isn’t available then it will be loaded someplace
+else. But loading at a different base-address means the references in
+the file are wrong, so Windows has to rewrite the addresses of those
+references. This can take a small, but not insignificant amount of
+time. So when you load two DLLs that both use 0x10000000 as a default
+base-address (which most compilers use), then one of them is going to
+be rewritten. If you instead used two different addresses for the
+DLLs, with enough difference to avoid overlapping, then there’s a
+better chance that the modules can be loaded without rewriting.</p>
+<p>Choosing a base-address isn’t an exact science, however. You
+should pick a fairly large, and round number; a multiple of <code>0x100000</code>
+higher than <code>0x50000000</code> is a good choice. And you should
+try avoid overlapping other modules that might be loaded. A good list
+of how modules are arranged in memory can be found in the crash dump
+that Dromed makes. Looking at one right now, I can see that there’s
+a large chunk of unused space between <code>0x50000000</code> and
+<code>0x5AD00000</code>. We just need to tell our linker that we want
+to use a custom base-address. For Borland, the option flag is
+<code><u>-b:0x51000000</u></code>. MSVC uses the option
+<code><u>/base:&quot;0x51000000&quot;</u></code>. And with GCC it’s
+<code><u>-Wl,--image-base=0x51000000</u></code>, or with <code>dllwrap</code>,
+you can just use <code><u>--image-base 0x51000000</u></code>. GCC
+also has a feature designed for this situation; specify the option
+<code><u>-Wl,--enable-auto-image-base</u></code> and the base-address
+will be set to a semi-unique value based on the name of the DLL.</p>
+
+<p style="font-size: 7pt; margin-top: 3em; padding-top: 1em; border-top: thin groove;">
+Copyright &copy; 2004 Tom N Harris 
+(<a href="mailto:telliamed@whoopdedo.cjb.net">telliamed@whoopdedo.cjb.net</a>);
+<br>
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the 
+"Software"), to deal in the Software without restriction, including 
+without limitation the rights to use, copy, modify, merge, publish, 
+distribute, sublicense, and/or sell copies of the Software, and to 
+permit persons to whom the Software is furnished to do so.
+<br>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-
+INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN 
+AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+THE SOFTWARE.
+</p>
+
+</body>
+</html>
