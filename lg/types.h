@@ -267,9 +267,9 @@ public:
 		{ return m_pchData[pos]; }
 
 	int Compare(int, const char *) const;
-	int cAnsiStr::Compare(const cAnsiStr& rStr) const
+	int Compare(const cAnsiStr& rStr) const
 		{ return Compare(rStr.m_nDataLength, rStr.m_pchData); }
-	int cAnsiStr::Compare(const char *pchData) const
+	int Compare(const char *pchData) const
 		{ return Compare(strlen(pchData) + 1, pchData); }
 
 	int Find(const char *, int start = 0) const;
