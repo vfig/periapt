@@ -20,15 +20,15 @@ DLLWRAP = dllwrap
 DEFINES = -DWINVER=0x0400 -D_WIN32_WINNT=0x0400 -DWIN32_LEAN_AND_MEAN
 
 ARFLAGS = rc
-LDFLAGS = -mno-cygwin -mwindows -L.
+LDFLAGS = -mwindows -L.
 LIBS = -lstdc++ -luuid
 INCLUDEDIRS = -I. -I$(srcdir)
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
 CXXFLAGS =  -W -Wall -Wno-unused-parameter -Wno-pmf-conversions \
-			$(INCLUDEDIRS) -mno-cygwin -masm=att \
+			$(INCLUDEDIRS) -masm=att \
 			-fno-pcc-struct-return -mms-bitfields
-LDFLAGS = -mno-cygwin -mwindows -L. -llg
+LDFLAGS = -mwindows -L. -llg
 DLLFLAGS = --def script.def --add-underscore --target i386-mingw32
 
 ifdef DEBUG
