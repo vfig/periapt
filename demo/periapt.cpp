@@ -33,9 +33,6 @@
 
 using namespace std;
 
-#define mprintf if (g_pfnMPrintf) g_pfnMPrintf
-void readMem(DWORD offset, DWORD len);
-
 /*** Script class declarations (this will usually be in a header file) ***/
 
 class cScr_Readmem : public cScript
@@ -57,11 +54,6 @@ public:
 long cScr_Readmem::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
 {
 	long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
-
-	readMem(0x286960, 0x20);
-	// # 0x286960 - _cam_render_scene address in Dromed ND 1.26
-	// # 0x1bc7a0 - _cam_render_scene address in Thief2 ND 1.26
-	// # 0x1bd820 - _cam_render_scene in Thief2 ND 1.27
 
 	try
 	{
@@ -127,73 +119,22 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 
 /* -------------------------------------------------------- */
 
-// #include <windows.h>
-// #include <psapi.h>
 
 static void printLastError()
 {
     DWORD err = GetLastError();
     char buffer[1024];
     FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err, 0, buffer, 1024, NULL);
-    mprintf("(%lu) %s\n", err, buffer);
+    printf("(%lu) %s\n", err, buffer);
 }
-
-// static void DumpModules(HANDLE hProcess)
-// {
-//     HMODULE hMods[1024];
-//     DWORD cbNeeded = 0;
-//     unsigned int i;
-
-//     if (EnumProcessModules(hProcess, hMods, sizeof(hMods), &cbNeeded))
-//         {
-//         for (i = 0; i < (cbNeeded / sizeof(HMODULE)); i++)
-//         {
-//             TCHAR szModName[MAX_PATH];
-//             if (GetModuleFileNameEx(hProcess, hMods[i], szModName, sizeof(szModName) / sizeof(TCHAR)))
-//             {
-//                 printf("Module %u @ %08x: %s\n", i, (DWORD)hMods[i], szModName);
-//             }
-//         }
-//     } else {
-//         printf("EnumProcessModules failed! (cbNeeded: %lu)\n", (DWORD)cbNeeded);
-//         printLastError();
-//     }
-// }
 
 void readMem(DWORD offset, DWORD len)
 {
-/*
-    HANDLE hThread, hProcess;
-    void*  pLibRemote = 0;  // the address (in the remote process) where szLibPath will be copied to;
-
-    HMODULE hKernel32 = GetModuleHandle("Kernel32");
-    HINSTANCE hInst = GetModuleHandle(NULL);
-
-    // Get process handle
-    hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId);
-    if (hProcess == NULL) {
-        printf("OpenProcess failed!\n");
-        printLastError();
-        return;
-    } else {
-        printf("Process handle: %08x\n", (DWORD)hProcess);
-    }
-
-    DumpModules(hProcess);
-
-
-    // Get module handle
-    HMODULE hModule;
-    DWORD cbNeeded;
-    EnumProcessModules(hProcess, &hModule, sizeof(hModule), &cbNeeded);
-    printf("Module base address: %08x\n", (DWORD)hModule);
-    DWORD baseAddress = (DWORD)hModule;
-*/
 	HANDLE hProcess = GetCurrentProcess();
     HMODULE hModule = GetModuleHandle(NULL);
     // TODO: we probably can't see printfs, right?
     // if (g_pfnMPrintf) g_pfnMPrintf(...);
-    mprintf("Module base address: %08x\n", (DWORD)hModule);
+    printf("Module base address: %08x\n", (DWORD)hModule);
     DWORD baseAddress = (DWORD)hModule;
 
     len = 32; // ignore whatever we were told.
@@ -202,19 +143,23 @@ void readMem(DWORD offset, DWORD len)
     SIZE_T bytesRead = 0;
     BOOL ok = ReadProcessMemory(hProcess, (LPCVOID)(baseAddress+offset), bytes, len, &bytesRead);
     if (ok) {
-        mprintf("Bytes at %08x:\n", offset);
+        printf("Bytes at %08x:\n", offset);
         for (int i=0; i<len; ++i) {
             if (i%16 == 0) printf(" ");
-            mprintf(" %02X", bytes[i]);
+            printf(" %02X", bytes[i]);
             if (i%16 == 15) printf("\n");
         }
-        mprintf("\n");
+        printf("\n");
     } else {
-        mprintf("ReadProcessMemory failed (%lu bytes read)!\n", (unsigned long)bytesRead);
+        printf("ReadProcessMemory failed (%lu bytes read)!\n", (unsigned long)bytesRead);
         printLastError();
         return;
     }
 }
+
+
+/* -------------------------------------------------------- */
+
 
 #include <stdio.h>
 
@@ -225,11 +170,18 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     	// Since dromed already has a console, we don't want to allocate one,
     	// not unless we're running in the game itself, I guess?
         // AllocConsole();
-    	// But I guess we still redirect stdout??
+    	// But I guess we still redirect stdout so printf can be seen in
+    	// dromed's monolog.
         freopen("CONOUT$", "w", stdout);
         printf("DLL_PROCESS_ATTACH\n");
         // If you need to know the base address of the process your injected:   
         printf("base address: 0x%X\n", (DWORD)GetModuleHandle(NULL));
+
+		// # 0x286960 - _cam_render_scene in Dromed ND 1.26
+		// # 0x1bc7a0 - _cam_render_scene in Thief2 ND 1.26
+		// # 0x1bd820 - _cam_render_scene in Thief2 ND 1.27
+		readMem(0x286960, 0x20);
+
         break;
     case DLL_PROCESS_DETACH:
         printf("DLL_PROCESS_DETACH\n");
