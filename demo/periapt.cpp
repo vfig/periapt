@@ -47,84 +47,53 @@ enum ExeIdentity {
     ExeIdentityUnknown = -1,
 };
 struct ExeSignature {
+    const char *name;
+    const char *version;
     DWORD offset;
     DWORD size;
     UCHAR bytes[ExeSignatureBytesMax];
     CHAR fixups[ExeSignatureFixupsMax];
 };
-struct ExeFunctionPointers {
-    DWORD cam_render_scene;
-};
-struct ExeInfo {
-    const char *name;
-    const char *version;
-    ExeSignature signature;
-    ExeFunctionPointers functions;
-};
-static const ExeInfo ExeInfoTable[ExeIdentityCount] = {
+static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
     {
-        "Thief2", "ND 1.26",
-        {   // Signature
-            0x001bc7a0UL, 31,
-            {
+        "Thief2", "ND 1.26", 0x001bc7a0UL, 31,
+        {
             0x83,0xec,0x28,0xdd,0x05,0xd8,0xde,0x38,
             0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
             0x05,0xe0,0xde,0x38,0x00,0x8b,0xf0,0x8b,
             0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
-            },
-            { 5, 17, -1 },
         },
-        {   // FunctionPointers
-            0x001bc7a0UL, // cam_render_scene
-        },
+        { 5, 17, -1 },
     },
     {
-        "DromEd", "ND 1.26",
-        {   // Signature
-            0x00286960UL, 31,
-            {
-                0x83,0xec,0x28,0xdd,0x05,0xa8,0xdf,0x4a,
-                0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
-                0x05,0xb0,0xdf,0x4a,0x00,0x8b,0xf0,0x8b,
-                0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
-            },
-            { 5, 17, -1 },
+        "DromEd", "ND 1.26", 0x00286960UL, 31,
+        {
+            0x83,0xec,0x28,0xdd,0x05,0xa8,0xdf,0x4a,
+            0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
+            0x05,0xb0,0xdf,0x4a,0x00,0x8b,0xf0,0x8b,
+            0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        {   // FunctionPointers
-            0x00286960UL, // cam_render_scene
-        },
+        { 5, 17, -1 },
     },
     {
-        "Thief2", "ND 1.27",
-        {   // Signature
-            0x001bd820UL, 31,
-            {
-                0x83,0xec,0x28,0xdd,0x05,0xd8,0xee,0x38,
-                0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
-                0x05,0xe0,0xee,0x38,0x00,0x8b,0xf0,0x8b,
-                0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
-            },
-            { 5, 17, -1 },
+        "Thief2", "ND 1.27", 0x001bd820UL, 31,
+        {
+            0x83,0xec,0x28,0xdd,0x05,0xd8,0xee,0x38,
+            0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
+            0x05,0xe0,0xee,0x38,0x00,0x8b,0xf0,0x8b,
+            0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        {   // FunctionPointers
-            0x001bd820UL, // cam_render_scene
-        },
+        { 5, 17, -1 },
     },
     {
-        "DromEd", "ND 1.27",
-        {   // Signature
-            0x002895c0UL, 31,
-            {
-                0x83,0xec,0x28,0xdd,0x05,0xa8,0x1f,0x4b,
-                0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
-                0x05,0xb0,0x1f,0x4b,0x00,0x8b,0xf0,0x8b,
-                0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
-            },
-            { 5, 17, -1 },
+        "DromEd", "ND 1.27", 0x002895c0UL, 31,
+        {
+            0x83,0xec,0x28,0xdd,0x05,0xa8,0x1f,0x4b,
+            0x00,0x53,0x56,0xdd,0x54,0x24,0x24,0xdd,
+            0x05,0xb0,0x1f,0x4b,0x00,0x8b,0xf0,0x8b,
+            0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        {   // FunctionPointers
-            0x002895c0UL, // cam_render_scene
-        },
+        { 5, 17, -1 },
     },
 };
 
@@ -167,13 +136,114 @@ bool DoesSignatureMatch(const ExeSignature *sig) {
 
 ExeIdentity IdentifyExe() {
     for (int i=0; i<ExeIdentityCount; ++i) {
-        const ExeSignature *sig = &(ExeInfoTable[i].signature);
+        const ExeSignature *sig = &(ExeSignatureTable[i]);
         if (DoesSignatureMatch(sig)) {
             return static_cast<ExeIdentity>(i);
         }
     }
     return ExeIdentityUnknown;
 }
+
+/*** Function info ***/
+
+enum ExeFunction {
+    ExeFunction_cam_render_scene = 0,
+
+    ExeFunctionCount,
+};
+struct ExeFunctionInfo {
+    DWORD offset;
+    DWORD prologueSize;
+};
+static const ExeFunctionInfo PerIdentityExeFunctionInfoTable[ExeIdentityCount][ExeFunctionCount] = {
+    // ExeThief_v126
+    {
+        { 0x001bc7a0UL, 9 }, // ExeFunction_cam_render_scene
+    },
+    // ExeDromEd_v126
+    {
+        { 0x00286960UL, 9 }, // ExeFunction_cam_render_scene
+    },
+    // ExeThief_v127
+    {
+        { 0x001bd820UL, 9 }, // ExeFunction_cam_render_scene
+    },
+    // ExeDromEd_v127
+    {
+        { 0x002895c0UL, 9 }, // ExeFunction_cam_render_scene
+    },
+};
+static const ExeFunctionInfo *ExeFunctionInfoTable;
+
+/*** Function patching ***/
+
+void ReadFunctionMemory(void *address, BYTE* buffer, DWORD size) {
+    DWORD originalProtection;
+    VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &originalProtection);
+    ReadProcessMemory(GetCurrentProcess(), (LPVOID)address, buffer, size, NULL);
+    VirtualProtect(address, size, originalProtection, NULL);
+}
+
+void WriteFunctionMemory(void* address, BYTE* buffer, DWORD size) {
+    DWORD originalProtection;
+    VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &originalProtection);
+    WriteProcessMemory(GetCurrentProcess(), (LPVOID)address, buffer, size, NULL);
+    VirtualProtect(address, size, originalProtection, NULL);
+}
+
+#define TRAMPOLINE_SIZE 16
+struct Trampoline {
+    bool active;
+    int length;
+    BYTE bytes[TRAMPOLINE_SIZE];
+};
+static Trampoline TrampolineTable[ExeFunctionCount] = {};
+
+void ActivateTrampoline(ExeFunction fn) {
+    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+    const ExeFunctionInfo *info = &ExeFunctionInfoTable[fn];
+    Trampoline *trampoline = &TrampolineTable[fn];
+#ifndef NDEBUG
+    // Make sure the trampoline can hold the prologue!
+    // FIXME: will need space for an absolute jump! But for now we're not
+    //        doing a full trampoline, just copying bytes in and out.
+    if (info->prologueSize < TRAMPOLINE_SIZE) {
+    }
+#endif
+    if (! trampoline->active) {
+        DWORD addr = baseAddress + info->offset;
+        trampoline->length = info->prologueSize;
+        ReadFunctionMemory((LPVOID)addr, trampoline->bytes, trampoline->length);
+        BYTE hack[] = { 0xc3 };
+        WriteFunctionMemory((LPVOID)addr, hack, 1);
+        trampoline->active = true;
+    }
+}
+
+void DeactivateTrampoline(ExeFunction fn) {
+    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+    const ExeFunctionInfo *info = &ExeFunctionInfoTable[fn];
+    Trampoline *trampoline = &TrampolineTable[fn];
+#ifndef NDEBUG
+    // Make sure the trampoline can hold the prologue!
+    // FIXME: will need space for an absolute jump! But for now we're not
+    //        doing a full trampoline, just copying bytes in and out.
+    if (info->prologueSize < TRAMPOLINE_SIZE) {
+    }
+#endif
+    if (trampoline->active) {
+        DWORD addr = baseAddress + info->offset;
+        WriteFunctionMemory((LPVOID)addr, trampoline->bytes, trampoline->length);
+        trampoline->active = false;
+    }
+}
+
+void DeactivateAllTrampolines() {
+    for (int i=0; i<ExeFunctionCount; ++i) {
+        DeactivateTrampoline(static_cast<ExeFunction>(i));
+    }
+}
+
 
 /*** Script class declarations (this will usually be in a header file) ***/
 
@@ -198,7 +268,9 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
 
     if (stricmp(pMsg->message, "TurnOn") == 0) {
+        ActivateTrampoline(ExeFunction_cam_render_scene);
     } else if (stricmp(pMsg->message, "TurnOff") == 0) {
+        DeactivateTrampoline(ExeFunction_cam_render_scene);
     }
 
     return iRet;
@@ -220,47 +292,6 @@ const sScrClassDesc cScriptModule::sm_ScriptsArray[] = {
     { "periapt", "PeriaptControl", "CustomScript", cScr_PeriaptControl::ScriptFactory },
 };
 const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/sizeof(sm_ScriptsArray[0]);
-
-
-/* -------------------------------------------------------- */
-
-
-static void printLastError()
-{
-    DWORD err = GetLastError();
-    char buffer[1024];
-    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err, 0, buffer, 1024, NULL);
-    printf("(%lu) %s\n", err, buffer);
-}
-
-void readMem(DWORD offset, DWORD len)
-{
-    HANDLE hProcess = GetCurrentProcess();
-    HMODULE hModule = GetModuleHandle(NULL);
-    // TODO: we probably can't see printfs, right?
-    // if (g_pfnMPrintf) g_pfnMPrintf(...);
-    printf("Module base address: %08x\n", (DWORD)hModule);
-    DWORD baseAddress = (DWORD)hModule;
-
-    len = 32; // ignore whatever we were told.
-    UCHAR bytes[32];
-
-    SIZE_T bytesRead = 0;
-    BOOL ok = ReadProcessMemory(hProcess, (LPCVOID)(baseAddress+offset), bytes, len, &bytesRead);
-    if (ok) {
-        printf("Bytes at %08x:\n", offset);
-        for (int i=0; i<len; ++i) {
-            if (i%16 == 0) printf(" ");
-            printf(" %02X", bytes[i]);
-            if (i%16 == 15) printf("\n");
-        }
-        printf("\n");
-    } else {
-        printf("ReadProcessMemory failed (%lu bytes read)!\n", (unsigned long)bytesRead);
-        printLastError();
-        return;
-    }
-}
 
 /*** Function patching ***/
 
@@ -319,11 +350,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         printf(PREFIX "Base address: 0x%X\n", (unsigned long)GetModuleHandle(NULL));
         // Display the results of identifying the exe.
         if (isIdentified) {
-            const ExeInfo *info = &ExeInfoTable[identity];
+            const ExeSignature *info = &ExeSignatureTable[identity];
             printf(PREFIX "Identified exe as %s %s (%s)\n",
                 info->name, info->version, (isEditor ? "EDITOR" : "GAME"));
-            // FIXME: remove this:
-            readMem(info->functions.cam_render_scene, 0x20);
+            // Assign things that depend on identity:
+            ExeFunctionInfoTable = PerIdentityExeFunctionInfoTable[identity];
         } else {
             printf(PREFIX "Cannot identify exe; must not continue!\n");
             return false;
@@ -331,6 +362,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     } break;
     case DLL_PROCESS_DETACH: {
         printf(PREFIX "DLL_PROCESS_DETACH\n");
+        DeactivateAllTrampolines();
         if (didAllocConsole) {
             FreeConsole();
         }
