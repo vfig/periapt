@@ -521,9 +521,9 @@ typedef IScript* (__cdecl *ScriptFactoryProc)(const char*, int);
 
 struct sScrClassDesc
 {
-	char* pszModule;
-	char* pszClass;
-	char* pszBaseClass;
+	const char* pszModule;
+	const char* pszClass;
+	const char* pszBaseClass;
 	ScriptFactoryProc pfnFactory;
 };
 
