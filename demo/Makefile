@@ -35,6 +35,7 @@ LGDIR = ..
 
 CC = gcc
 CXX = g++
+ASM = as
 AR = ar
 DLLWRAP = dllwrap
 RC = windres
@@ -46,11 +47,13 @@ DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAM
 
 ifdef DEBUG
 DEFINES := $(DEFINES) -D_DEBUG 
+ASMDEBUG =
 CXXDEBUG = -g -O0
 LDDEBUG = -g
 LGLIB = -llg-d
 else
 DEFINES := $(DEFINES) -DNDEBUG
+ASMDEBUG =
 CXXDEBUG = -O3 
 LDDEBUG =
 LGLIB = -llg
@@ -63,6 +66,7 @@ LIBS = $(LGLIB) -luuid -lstdc++
 INCLUDES = -I. -I$(srcdir) -I$(LGDIR)
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
+ASMFLAGS =
 CXXFLAGS =  -W -Wall -masm=att \
 	    -fno-pcc-struct-return -mms-bitfields -std=c++11
 DLLFLAGS =  --target i386-mingw32
@@ -70,11 +74,16 @@ DLLFLAGS =  --target i386-mingw32
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) $(INCLUDES) -o $@ -c $<
 
+%.o: %.s
+	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
+
 %.osm: %.o ScriptModule.o Script.o
 	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
-all:
+periapt.osm: periapt.o detours.o ScriptModule.o Script.o
+	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+
+all: periapt.osm
 
 clean:
 	$(RM) *.o *.osm
-
