@@ -30,6 +30,7 @@
 #include <new>
 #include <exception>
 #include <string>
+#include <strings.h>
 
 using namespace std;
 
@@ -176,9 +177,9 @@ long cScr_SlowRelay::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTrace
 	dataInfo.objId = m_iObjId;
 	dataInfo.pszClass = m_szName;
 
-	if (!stricmp(pMsg->message, "Timer"))
+	if (!_stricmp(pMsg->message, "Timer"))
 	{
-		if (!stricmp(static_cast<sScrTimerMsg*>(pMsg)->name, "Delay"))
+		if (!_stricmp(static_cast<sScrTimerMsg*>(pMsg)->name, "Delay"))
 		{
 			ILinkSrv* pLS = static_cast<ILinkSrv*>(g_pScriptManager->GetService(IID_ILinkScriptService));
 			ILinkToolsSrv* pLTS = static_cast<ILinkToolsSrv*>(g_pScriptManager->GetService(IID_ILinkToolsScriptService));
@@ -210,7 +211,7 @@ long cScr_SlowRelay::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTrace
 			}
 		}
 	}
-	else if (!stricmp(pMsg->message, "TurnOn"))
+	else if (!_stricmp(pMsg->message, "TurnOn"))
 	{
 		int iCount = 0;
 		dataInfo.pszName = "Count";
@@ -226,7 +227,7 @@ long cScr_SlowRelay::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTrace
 		if (!g_pScriptManager->IsScriptDataSet(&dataInfo))
 			SetTimer();
 	}
-	else if (!stricmp(pMsg->message, "TurnOff"))
+	else if (!_stricmp(pMsg->message, "TurnOff"))
 	{
 		dataInfo.pszName = "Count";
 		if (g_pScriptManager->IsScriptDataSet(&dataInfo))
@@ -263,7 +264,7 @@ long cScr_SlowRelay::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTrace
 
 IScript* cScr_Echo::ScriptFactory(const char* pszName, int iHostObjId)
 {
-	if (stricmp(pszName,"Echo") != 0)
+	if (_stricmp(pszName,"Echo") != 0)
 		return NULL;
 
 	// Use a static string, so I don't have to make a copy.
@@ -273,7 +274,7 @@ IScript* cScr_Echo::ScriptFactory(const char* pszName, int iHostObjId)
 
 IScript* cScr_Parrot::ScriptFactory(const char* pszName, int iHostObjId)
 {
-	if (stricmp(pszName,"Parrot") != 0)
+	if (_stricmp(pszName,"Parrot") != 0)
 		return NULL;
 
 	// Use a static string, so I don't have to make a copy.
@@ -283,7 +284,7 @@ IScript* cScr_Parrot::ScriptFactory(const char* pszName, int iHostObjId)
 
 IScript* cScr_SlowRelay::ScriptFactory(const char* pszName, int iHostObjId)
 {
-	if (stricmp(pszName,"SlowRelay") != 0)
+	if (_stricmp(pszName,"SlowRelay") != 0)
 		return NULL;
 
 	// Use a static string, so I don't have to make a copy.

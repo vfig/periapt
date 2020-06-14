@@ -30,6 +30,7 @@
 #include <new>
 #include <exception>
 #include <string>
+#include <strings.h>
 
 using namespace std;
 
@@ -267,9 +268,9 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 {
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
 
-    if (stricmp(pMsg->message, "TurnOn") == 0) {
+    if (_stricmp(pMsg->message, "TurnOn") == 0) {
         ActivateTrampoline(ExeFunction_cam_render_scene);
-    } else if (stricmp(pMsg->message, "TurnOff") == 0) {
+    } else if (_stricmp(pMsg->message, "TurnOff") == 0) {
         DeactivateTrampoline(ExeFunction_cam_render_scene);
     }
 
@@ -280,7 +281,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 
 IScript* cScr_PeriaptControl::ScriptFactory(const char* pszName, int iHostObjId)
 {
-    if (stricmp(pszName,"PeriaptControl") != 0)
+    if (_stricmp(pszName,"PeriaptControl") != 0)
         return NULL;
 
     // Use a static string, so I don't have to make a copy.

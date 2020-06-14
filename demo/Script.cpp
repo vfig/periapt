@@ -24,6 +24,7 @@
 #include "Script.h"
 
 #include <cstring>
+#include <strings.h>
 
 using namespace std;
 
@@ -74,7 +75,7 @@ const char* cScript::GetClassName(void)
 long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
 {
 	long iRet = 0;
-	if (!stricmp(pMsg->message, "ScriptPtrQuery"))
+	if (!_stricmp(pMsg->message, "ScriptPtrQuery"))
 	{
 		iRet = ScriptPtrQuery(static_cast<sPtrQueryMsg*>(pMsg));
 	}
@@ -85,7 +86,7 @@ long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction 
 long cScript::ScriptPtrQuery(sPtrQueryMsg* pMsg)
 {
 	// Check class name 
-	if (!stricmp(pMsg->pszDestClass, GetClassName()))
+	if (!_stricmp(pMsg->pszDestClass, GetClassName()))
 	{
 		*(pMsg->pScriptReceptacle) = reinterpret_cast<void*>(this);
 		return 0;
