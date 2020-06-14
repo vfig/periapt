@@ -64,7 +64,7 @@ INCLUDES = -I. -I$(srcdir) -I$(LGDIR)
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
 CXXFLAGS =  -W -Wall -masm=att \
-	    -fno-pcc-struct-return -mms-bitfields
+	    -fno-pcc-struct-return -mms-bitfields -std=c++11
 DLLFLAGS =  --target i386-mingw32
 
 %.o: %.cpp

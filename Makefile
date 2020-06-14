@@ -27,7 +27,7 @@ INCLUDEDIRS = -I. -I$(srcdir)
 # A lot of the callbacks have unused parameters, so I turn that off.
 CXXFLAGS =  -W -Wall -Wno-unused-parameter -Wno-pmf-conversions \
 			$(INCLUDEDIRS) -masm=att \
-			-fno-pcc-struct-return -mms-bitfields
+			-fno-pcc-struct-return -mms-bitfields -std=c++11
 LDFLAGS = -mwindows -L. -llg
 DLLFLAGS = --def script.def --add-underscore --target i386-mingw32
 
