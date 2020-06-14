@@ -848,13 +848,13 @@ void cAnsiStr::FmtStr(unsigned int nLen, const char* pszFormat, ...)
 	va_list va;
 	unsigned int nTempLen;
 	va_start(va, pszFormat);
-	nTempLen = vsprintf(NULL, pszFormat, va);
+	nTempLen = vsnprintf(NULL, 0, pszFormat, va);
 	va_end(va);
 	char *pTempBuf = new(std::nothrow) char[nTempLen];
 	if (!pTempBuf)
 		return;
 	va_start(va, pszFormat);
-	vsprintf(pTempBuf, pszFormat, va);
+	vsnprintf(pTempBuf, nTempLen, pszFormat, va);
 	va_end(va);
 	AllocBuffer(nLen + 1);
 	if (nLen < nTempLen)
@@ -868,11 +868,11 @@ void cAnsiStr::FmtStr(const char* pszFormat, ...)
 	va_list va;
 	int nLen;
 	va_start(va, pszFormat);
-	nLen = vsprintf(NULL, pszFormat, va);
+	nLen = vsnprintf(NULL, 0, pszFormat, va);
 	va_end(va);
 	AllocBuffer(nLen + 1);
 	va_start(va, pszFormat);
-	vsprintf(m_pchData, pszFormat, va);
+	vsnprintf(m_pchData, nLen, pszFormat, va);
 	va_end(va);
 	m_nDataLength = nLen;
 }
