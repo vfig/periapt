@@ -74,6 +74,8 @@ const char* cScript::GetClassName(void)
 
 long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
 {
+	(void)pReply; // Unused
+	(void)eTrace; // Unused
 	long iRet = 0;
 	if (!_stricmp(pMsg->message, "ScriptPtrQuery"))
 	{

@@ -303,6 +303,8 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
+    (void)hModule; // Unused
+    (void)lpReserved; // Unused
     static bool didAllocConsole = false;
     switch (reason) {
     case DLL_PROCESS_ATTACH: {
