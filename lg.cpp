@@ -162,7 +162,7 @@ cMultiParm& cMultiParm::operator = (sMultiParm& mp)
 {
 	if (psz != NULL && (type == kMT_String || type == kMT_Vector))
 		g_pMalloc->Free(psz);
-	memcpy(this, &mp, sizeof(sMultiParm));
+	memcpy((void *)this, &mp, sizeof(sMultiParm));
 	return *this;
 }
 
