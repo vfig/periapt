@@ -84,7 +84,7 @@ public:
 		if (m_pIFace)
 			m_pIFace->AddRef();
 	}
-	SInterface(IScriptMan* pSM) throw(no_interface)
+	SInterface(IScriptMan* pSM) throw(/*no_interface*/)
 		: m_pIFace(NULL)
 	{
 		if (E_NOINTERFACE == pSM->QueryInterface(_IID::iid(), reinterpret_cast<void**>(&m_pIFace)))
@@ -165,7 +165,7 @@ public:
 		if (m_pIFace)
 			m_pIFace->AddRef();
 	}
-	SService(IScriptMan* pSM) throw(no_interface)
+	SService(IScriptMan* pSM) throw(/*no_interface*/)
 	{
 		m_pIFace = static_cast<_IFace*>(pSM->GetService(_IID::iid()));
 		if (!m_pIFace)

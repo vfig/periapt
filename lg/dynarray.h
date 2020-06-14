@@ -18,7 +18,7 @@ protected:
 	void * m_data;
 	unsigned long m_size;
 
-	static void _resize(void **p, unsigned int sz, unsigned int c) throw(std::bad_alloc);
+	static void _resize(void **p, unsigned int sz, unsigned int c) throw(/*std::bad_alloc*/);
 
 	~cDynArrayBase();
 	cDynArrayBase()
@@ -46,8 +46,8 @@ public:
 
 	unsigned long size() const
 		{ return m_size; }
-	ref operator[](int _n) throw(std::out_of_range);
-	c_ref operator[](int _n) const throw(std::out_of_range);
+	ref operator[](int _n) throw(/*std::out_of_range*/);
+	c_ref operator[](int _n) const throw(/*std::out_of_range*/);
 };
 
 #include <lg/dynarray.hpp>

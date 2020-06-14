@@ -931,7 +931,7 @@ float cScrVec::MagSquared() const
 /////////////////
 // cDynArrayBase
 /////////////////
-void cDynArrayBase::_resize(void **p, unsigned int sz, unsigned int c) throw(std::bad_alloc)
+void cDynArrayBase::_resize(void **p, unsigned int sz, unsigned int c) throw(/*std::bad_alloc*/)
 {
 	register void* d = *p;
 	if (c != 0)

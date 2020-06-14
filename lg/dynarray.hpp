@@ -34,7 +34,7 @@ cDynArray<_T>& cDynArray<_T>::operator=(const cDynArray<_T>& _cpy)
 }
 
 template<typename _T>
-_T& cDynArray<_T>::operator[](int _n) throw (std::out_of_range)
+_T& cDynArray<_T>::operator[](int _n) throw (/*std::out_of_range*/)
 {
 	if (_n >= m_size)
 		throw std::out_of_range("cDynArray::operator[]");
@@ -42,7 +42,7 @@ _T& cDynArray<_T>::operator[](int _n) throw (std::out_of_range)
 }
 
 template<typename _T>
-const _T& cDynArray<_T>::operator[](int _n) const throw (std::out_of_range)
+const _T& cDynArray<_T>::operator[](int _n) const throw (/*std::out_of_range*/)
 {
 	if (_n >= m_size)
 		throw std::out_of_range("cDynArray::operator[]");
