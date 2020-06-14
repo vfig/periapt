@@ -47,6 +47,8 @@ struct sScrMsgBase : IUnknown
 {
 	sScrMsgBase()
 		{ m_iRef = 1; }
+	virtual ~sScrMsgBase()
+		{ }
 	virtual HRESULT __stdcall QueryInterface(REFIID riid, void** ppv);
 	virtual ULONG __stdcall AddRef();
 	virtual ULONG __stdcall Release();
