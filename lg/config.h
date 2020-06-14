@@ -15,10 +15,6 @@
 // Just have to rely on it being the default.
 #define __thiscall 
 
-#else // !_MSC_VER
-
-#define __thiscall 
-
 #endif // _MSC_VER
 
 #ifdef __GNUC__
