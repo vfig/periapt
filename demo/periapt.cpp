@@ -47,13 +47,16 @@ enum ExeIdentity {
     ExeIdentityCount,
     ExeIdentityUnknown = -1,
 };
+enum {
+    ExeFixupsEnd = 0xff,
+};
 struct ExeSignature {
     const char *name;
     const char *version;
     DWORD offset;
     DWORD size;
     UCHAR bytes[ExeSignatureBytesMax];
-    CHAR fixups[ExeSignatureFixupsMax];
+    UCHAR fixups[ExeSignatureFixupsMax];
 };
 static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
     {
@@ -64,7 +67,7 @@ static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
             0x05,0xe0,0xde,0x38,0x00,0x8b,0xf0,0x8b,
             0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        { 5, 17, -1 },
+        { 5, 17, ExeFixupsEnd },
     },
     {
         "DromEd", "ND 1.26", 0x00286960UL, 31,
@@ -74,7 +77,7 @@ static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
             0x05,0xb0,0xdf,0x4a,0x00,0x8b,0xf0,0x8b,
             0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        { 5, 17, -1 },
+        { 5, 17, ExeFixupsEnd },
     },
     {
         "Thief2", "ND 1.27", 0x001bd820UL, 31,
@@ -84,7 +87,7 @@ static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
             0x05,0xe0,0xee,0x38,0x00,0x8b,0xf0,0x8b,
             0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        { 5, 17, -1 },
+        { 5, 17, ExeFixupsEnd },
     },
     {
         "DromEd", "ND 1.27", 0x002895c0UL, 31,
@@ -94,7 +97,7 @@ static const ExeSignature ExeSignatureTable[ExeIdentityCount] = {
             0x05,0xb0,0x1f,0x4b,0x00,0x8b,0xf0,0x8b,
             0x06,0xdd,0x54,0x24,0x1c,0xd9,0x05,
         },
-        { 5, 17, -1 },
+        { 5, 17, ExeFixupsEnd },
     },
 };
 
@@ -110,8 +113,8 @@ bool DoesSignatureMatch(const ExeSignature *sig) {
     if (!ok || bytesRead != ExeSignatureBytesMax) return false;
     // Apply fixups
     for (int i=0; i<ExeSignatureFixupsMax; ++i) {
-        CHAR o = sig->fixups[i];
-        if (o < 0) break;
+        UCHAR o = sig->fixups[i];
+        if (o == ExeFixupsEnd) break;
         if (o >= (ExeSignatureBytesMax - sizeof(DWORD))) {
 #ifndef NDEBUG
             printf("Fixup outwith signature bounds.\n");
@@ -350,7 +353,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         // Now that we (hopefully) have somewhere for output to go,
         // we can print some useful messages.
         printf(PREFIX "DLL_PROCESS_ATTACH\n");
-        printf(PREFIX "Base address: 0x%X\n", (unsigned long)GetModuleHandle(NULL));
+        printf(PREFIX "Base address: 0x%X\n", (unsigned int)GetModuleHandle(NULL));
         // Display the results of identifying the exe.
         if (isIdentified) {
             const ExeSignature *info = &ExeSignatureTable[identity];
