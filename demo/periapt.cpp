@@ -248,6 +248,79 @@ void DeactivateAllTrampolines() {
     }
 }
 
+/*** various bullshit ***/
+
+void patch_jmp(uint32_t jmp_address, uint32_t dest_address) {
+    const uint8_t jmp = 0xE9;
+    int32_t offset = (dest_address - jmp_address) + 5;
+printf("  offset: %08x (%d)\n", offset, offset);
+printf("  memcpy %08x, %08x, %u\n", jmp_address, (uint32_t)&jmp, 1);
+    memcpy((void *)jmp_address, &jmp, 1);
+printf("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
+    memcpy((void *)(jmp_address+1), &offset, 4);
+}
+
+void install_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampoline, uint32_t size) {
+    if (! *hooked) {
+        *hooked = true;
+printf("hooking target %08x, bypass %08x, tramp %08x, size %u\n", target, bypass, trampoline, size);
+        DWORD targetProtection, bypassProtection;
+        VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
+        VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+printf("memcpy %08x, %08x, %u\n", bypass, target, size);
+        memcpy((void *)bypass, (void *)target, size);
+printf("patch_jmp %08x, %08x\n", bypass+size, target+size);
+        patch_jmp(bypass+size, target+size);
+printf("patch_jmp %08x, %08x\n", target, trampoline);
+        patch_jmp(target, trampoline);
+        VirtualProtect((void *)target, size, targetProtection, NULL);
+        VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+printf("hook complete\n");
+    }
+}
+
+void remove_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampoline, uint32_t size) {
+    (void)trampoline; // Unused
+    if (*hooked) {
+        *hooked = false;
+        DWORD targetProtection, bypassProtection;
+        VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
+        VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+        memcpy((void *)target, (void *)bypass, size);
+        VirtualProtect((void *)target, size, targetProtection, NULL);
+        VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+    }
+}
+
+// From hooks.s:
+extern "C" {
+
+extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
+extern const void *BYPS_cam_render_scene;
+extern const void *TRAM_cam_render_scene;
+bool hooked_cam_render_scene;
+
+void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
+    printf("hook entered!\n");
+    CALL_cam_render_scene(pos, zoom);
+    printf("hook leaving!\n");
+}
+
+}
+
+void install_all_hooks() {
+    const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
+    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+    install_hook(&hooked_cam_render_scene, baseAddress+info->offset,
+        (uint32_t)&BYPS_cam_render_scene, (uint32_t)&TRAM_cam_render_scene, info->prologueSize);
+}
+
+void remove_all_hooks() {
+    const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
+    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+    remove_hook(&hooked_cam_render_scene, baseAddress+info->offset,
+        (uint32_t)&BYPS_cam_render_scene, (uint32_t)&TRAM_cam_render_scene, info->prologueSize);
+}
 
 /*** Script class declarations (this will usually be in a header file) ***/
 
@@ -272,9 +345,11 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
 
     if (_stricmp(pMsg->message, "TurnOn") == 0) {
-        ActivateTrampoline(ExeFunction_cam_render_scene);
+        //ActivateTrampoline(ExeFunction_cam_render_scene);
+        install_all_hooks();
     } else if (_stricmp(pMsg->message, "TurnOff") == 0) {
-        DeactivateTrampoline(ExeFunction_cam_render_scene);
+        //DeactivateTrampoline(ExeFunction_cam_render_scene);
+        remove_all_hooks();
     }
 
     return iRet;
@@ -353,7 +428,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         // Now that we (hopefully) have somewhere for output to go,
         // we can print some useful messages.
         printf(PREFIX "DLL_PROCESS_ATTACH\n");
-        printf(PREFIX "Base address: 0x%X\n", (unsigned int)GetModuleHandle(NULL));
+        printf(PREFIX "Base address: 0x%08x\n", (unsigned int)GetModuleHandle(NULL));
+        printf(PREFIX "DLL base address: 0x%08x\n", (unsigned int)hModule);
         // Display the results of identifying the exe.
         if (isIdentified) {
             const ExeSignature *info = &ExeSignatureTable[identity];
@@ -365,6 +441,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             printf(PREFIX "Cannot identify exe; must not continue!\n");
             return false;
         }
+
+        printf("CALL_cam_render_scene: %08x\n", (uint32_t)(void *)CALL_cam_render_scene);
+        printf("BYPS_cam_render_scene: %08x\n", (uint32_t)&BYPS_cam_render_scene);
+        printf("TRAM_cam_render_scene: %08x\n", (uint32_t)&TRAM_cam_render_scene);
+
+
     } break;
     case DLL_PROCESS_DETACH: {
         printf(PREFIX "DLL_PROCESS_DETACH\n");
