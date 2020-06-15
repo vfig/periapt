@@ -20,12 +20,19 @@ _BYPS_cam_render_scene:
 
 	.intel_syntax noprefix
 
-	.text
+	.global _bypass_enable
 
 	.global _CALL_cam_render_scene
 	.global _BYPS_cam_render_scene
 	.global _TRAM_cam_render_scene
 	.extern _HOOK_cam_render_scene
+
+	.data
+
+_bypass_enable:
+	.byte 0x00
+
+	.text
 
 /*
 Incoming:
@@ -62,6 +69,8 @@ Outgoing:
 		Pos*	double...	[rtn] etc...
 */
 _TRAM_cam_render_scene:			# JMP here from patched _cam_render_scene.
+	test	byte ptr [_bypass_enable], 0xff
+	jz	_BYPS_cam_render_scene
 	fld	qword ptr [esp+4]	# push zoom
 	sub	sp, 8			#	.
 	fst	qword ptr [esp+0]	#	.

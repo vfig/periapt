@@ -1,8 +1,7 @@
 /******************************************************************************
- *    Demo.cc
+ *    Periapt.cpp
  *
- *    This file is part of Object Script Module
- *    Copyright (C) 2004 Tom N Harris <telliamed@whoopdedo.cjb.net>
+ *    Copyright (C) 2020 Andrew Durdin <me@andy.durdin.net>
  *
  *    Permission is hereby granted, free of charge, to any person obtaining
  *    a copy of this software and associated documentation files (the 
@@ -21,6 +20,20 @@
  *    THE SOFTWARE.
  *
  *****************************************************************************/
+
+// BUG: osm is not unloaded on `script_drop`.
+//
+//     I don't understand why; both empty.osm and echo.osm get unloaded ok
+//     when dropped. So why does this osm not? Is there a spurious
+//     LoadLibrary() somewhere?
+//
+// Ignore for now!
+//
+//     Once in the game, it gets loaded and unloaded with the mission okay,
+//     so this only affects DromEd. I guess I can live with that for now;
+//     I just have to be careful with my hooks.
+
+
 #include "Script.h"
 #include "ScriptModule.h"
 
@@ -204,76 +217,25 @@ static const ExeFunctionInfo PerIdentityExeFunctionInfoTable[ExeIdentityCount][E
 };
 static const ExeFunctionInfo *ExeFunctionInfoTable;
 
-/*** Function patching ***/
+/*** Hooks and crooks ***/
 
-void ReadFunctionMemory(void *address, BYTE* buffer, DWORD size) {
-    DWORD originalProtection;
-    VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &originalProtection);
-    ReadProcessMemory(GetCurrentProcess(), (LPVOID)address, buffer, size, NULL);
-    VirtualProtect(address, size, originalProtection, NULL);
+extern "C" {
+// These are defined in bypass.s:
+extern uint8_t bypass_enable;
+extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
+extern const void *BYPS_cam_render_scene;
+extern const void *TRAM_cam_render_scene;
 }
 
-void WriteFunctionMemory(void* address, BYTE* buffer, DWORD size) {
-    DWORD originalProtection;
-    VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &originalProtection);
-    WriteProcessMemory(GetCurrentProcess(), (LPVOID)address, buffer, size, NULL);
-    VirtualProtect(address, size, originalProtection, NULL);
+void enable_hooks() {
+    bypass_enable = 1;
+    printf("hooks enabled\n");
 }
 
-#define TRAMPOLINE_SIZE 16
-struct Trampoline {
-    bool active;
-    int length;
-    BYTE bytes[TRAMPOLINE_SIZE];
-};
-static Trampoline TrampolineTable[ExeFunctionCount] = {};
-
-void ActivateTrampoline(ExeFunction fn) {
-    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-    const ExeFunctionInfo *info = &ExeFunctionInfoTable[fn];
-    Trampoline *trampoline = &TrampolineTable[fn];
-#ifndef NDEBUG
-    // Make sure the trampoline can hold the prologue!
-    // FIXME: will need space for an absolute jump! But for now we're not
-    //        doing a full trampoline, just copying bytes in and out.
-    if (info->prologueSize < TRAMPOLINE_SIZE) {
-    }
-#endif
-    if (! trampoline->active) {
-        DWORD addr = baseAddress + info->offset;
-        trampoline->length = info->prologueSize;
-        ReadFunctionMemory((LPVOID)addr, trampoline->bytes, trampoline->length);
-        BYTE hack[] = { 0xc3 };
-        WriteFunctionMemory((LPVOID)addr, hack, 1);
-        trampoline->active = true;
-    }
+void disable_hooks() {
+    bypass_enable = 0;
+    printf("hooks disabled\n");
 }
-
-void DeactivateTrampoline(ExeFunction fn) {
-    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-    const ExeFunctionInfo *info = &ExeFunctionInfoTable[fn];
-    Trampoline *trampoline = &TrampolineTable[fn];
-#ifndef NDEBUG
-    // Make sure the trampoline can hold the prologue!
-    // FIXME: will need space for an absolute jump! But for now we're not
-    //        doing a full trampoline, just copying bytes in and out.
-    if (info->prologueSize < TRAMPOLINE_SIZE) {
-    }
-#endif
-    if (trampoline->active) {
-        DWORD addr = baseAddress + info->offset;
-        WriteFunctionMemory((LPVOID)addr, trampoline->bytes, trampoline->length);
-        trampoline->active = false;
-    }
-}
-
-void DeactivateAllTrampolines() {
-    for (int i=0; i<ExeFunctionCount; ++i) {
-        DeactivateTrampoline(static_cast<ExeFunction>(i));
-    }
-}
-
-/*** various bullshit ***/
 
 void patch_jmp(uint32_t jmp_address, uint32_t dest_address) {
     const uint8_t jmp = 0xE9;
@@ -285,7 +247,7 @@ printf("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
     memcpy((void *)(jmp_address+1), &offset, 4);
 }
 
-// FIXME: temp
+// FIXME: temp, just so I can print the address in install_hook/remove_hook below
 extern "C" {
 extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
 }
@@ -351,23 +313,16 @@ printf("unhook complete\n");
     }
 }
 
-// From hooks.s:
-extern "C" {
-
-extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
-extern const void *BYPS_cam_render_scene;
-extern const void *TRAM_cam_render_scene;
+// TODO: I don't think we want to hook and unhook many parts individually,
+// so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
-
-void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
+extern "C" void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
     static int counter = 0;
     bool print = ((counter % 60) == 0);
     if (print) printf("hook entered!\n");
     CALL_cam_render_scene(pos, zoom);
     if (print) printf("hook leaving!\n");
     ++counter;
-}
-
 }
 
 void install_all_hooks() {
@@ -409,8 +364,14 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     if (stricmp(pMsg->message, "Sim") == 0) {
         bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
         printf("Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
-        if (! fStarting) {
-            remove_all_hooks();
+        if (fStarting) {
+            // TODO: later we might want the switch to control just the specific
+            // periapt rendering, not necessarily enable/disable hooks generally;
+            // and at that point we'll want to enable hooks OnSim starting.
+            //enable_hooks();
+        } else {
+            // Make sure hooks are disabled when the sim stops (e.g. returning to editor).
+            disable_hooks();
         }
     }
     else if (stricmp(pMsg->message, "DarkGameModeChange") == 0) {
@@ -424,15 +385,10 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
         printf("EndScript\n");
     }
     else if (stricmp(pMsg->message, "TurnOn") == 0) {
-        //ActivateTrampoline(ExeFunction_cam_render_scene);
-        install_all_hooks();
-        // FIXME: temp - remove them all again, because
-        // THEY STAY AROUND !?!?!? hOW???
-        //remove_all_hooks();
+        enable_hooks();
     }
     else if (stricmp(pMsg->message, "TurnOff") == 0) {
-        //DeactivateTrampoline(ExeFunction_cam_render_scene);
-        remove_all_hooks();
+        disable_hooks();
     }
 
     return iRet;
@@ -495,6 +451,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             didAllocConsole = AllocConsole();
         }
         if (shouldRedirectStdout) {
+            // FIXME: I should really use mprintf instead of 
+            // printf-and-redirecting-stdout! Cause I really need the
+            // output to go to monolog.txt too...
+            // problem is, we don't get the monolog until ScriptModuleInit
+            // is called, which is later than ideal.
+            // Also, in game mode, I'd like the monolog _and_ a console
+            // for debugging purposes.
             freopen("CONOUT$", "w", stdout);
 
             // FIXME: for my convenience, let's put the console in
@@ -530,31 +493,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         printf("BYPS_cam_render_scene: %08x\n", (uint32_t)&BYPS_cam_render_scene);
         printf("TRAM_cam_render_scene: %08x\n", (uint32_t)&TRAM_cam_render_scene);
 
-        // Okay... I believe we need to separate INSTALLING and REMOVING the hooks
-        // from ENABLING and DISABLING them globally, maybe?
-        // We should INSTALL and REMOVE (rewrite memory) only when the DLL is loaded and unloaded.
-        // But we should have a single global flag that all trampolines check, and if not set then
-        // it just jumps directly into the relocated prologue as if nothing had changed; and if set
-        // then swizzle the parameters and call the hook (as it does unconditionally right now).
-
-        // The DLL not detaching thing on script_drop is weird. I could've sworn I remembered it
-        // happening. Did the [empty] msvc one detach cleanly maybe? or the [empty] gcc one?
-        // Check for my own sanity. I think the empty one might actually detach maybe?
-
-        // Well hey, looking through SCRPTPRP.CPP, SMODINFO.CPP, SCRPTMAN.CPP, SCRPTMOD.CPP, it
-        // Looks like FreeLibrary() is being called okay. So the DLL _ought_ to detach!!
-        // So also test the working gcc demo one?
-
-        // NO, I was NOT imagining it! The empty _and_ the echo one detach when dropped!!!
-        // so what the heck?
-        // also what the heck, the empty and echo ones still cause crashes? maybe that's
-        // cause of my playing fast and loose with the console in them, maybe?
+        install_all_hooks();
 
     } break;
     case DLL_PROCESS_DETACH: {
+        remove_all_hooks();
+
         printf(PREFIX "DLL_PROCESS_DETACH\n");
         printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
-        remove_all_hooks();
         // DeactivateAllTrampolines();
         if (didAllocConsole) {
             FreeConsole();

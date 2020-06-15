@@ -80,7 +80,7 @@ DLLFLAGS =  --target i386-mingw32
 %.osm: %.o ScriptModule.o Script.o
 	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
-periapt.osm: periapt.o detours.o ScriptModule.o Script.o
+periapt.osm: periapt.o bypass.o ScriptModule.o Script.o
 	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 all: periapt.osm
