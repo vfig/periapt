@@ -34,6 +34,31 @@
 
 using namespace std;
 
+// FIXME: temp
+void readMem(void *addr, DWORD lenxx)
+{
+    HANDLE hProcess = GetCurrentProcess();
+    // HMODULE hModule = GetModuleHandle(NULL);
+    // TODO: we probably can't see printfs, right?
+    // if (g_pfnMPrintf) g_pfnMPrintf(...);
+
+    int len = 32; // ignore whatever we were told.
+    UCHAR bytes[32];
+
+    SIZE_T bytesRead = 0;
+    BOOL ok = ReadProcessMemory(hProcess, (LPCVOID)(addr), bytes, len, &bytesRead);
+    if (ok) {
+        printf("Bytes at %08x:\n", (unsigned int)addr);
+        for (int i=0; i<len; ++i) {
+            if (i%16 == 0) printf(" ");
+            printf(" %02X", bytes[i]);
+            if (i%16 == 15) printf("\n");
+        }
+        printf("\n");
+    }
+}
+
+
 /*** Exe identity and information ***/
 
 #define ExeSignatureBytesMax 32
@@ -252,12 +277,17 @@ void DeactivateAllTrampolines() {
 
 void patch_jmp(uint32_t jmp_address, uint32_t dest_address) {
     const uint8_t jmp = 0xE9;
-    int32_t offset = (dest_address - jmp_address) + 5;
+    int32_t offset = (dest_address - (jmp_address+5));
 printf("  offset: %08x (%d)\n", offset, offset);
 printf("  memcpy %08x, %08x, %u\n", jmp_address, (uint32_t)&jmp, 1);
     memcpy((void *)jmp_address, &jmp, 1);
 printf("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
     memcpy((void *)(jmp_address+1), &offset, 4);
+}
+
+// FIXME: temp
+extern "C" {
+extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
 }
 
 void install_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampoline, uint32_t size) {
@@ -267,6 +297,12 @@ printf("hooking target %08x, bypass %08x, tramp %08x, size %u\n", target, bypass
         DWORD targetProtection, bypassProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
         VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+
+readMem((void *)target, 32);
+readMem((void *)CALL_cam_render_scene, 32);
+readMem((void *)bypass, 32);
+readMem((void *)trampoline, 32);
+
 printf("memcpy %08x, %08x, %u\n", bypass, target, size);
         memcpy((void *)bypass, (void *)target, size);
 printf("patch_jmp %08x, %08x\n", bypass+size, target+size);
@@ -275,6 +311,12 @@ printf("patch_jmp %08x, %08x\n", target, trampoline);
         patch_jmp(target, trampoline);
         VirtualProtect((void *)target, size, targetProtection, NULL);
         VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+
+readMem((void *)target, 32);
+readMem((void *)CALL_cam_render_scene, 32);
+readMem((void *)bypass, 32);
+readMem((void *)trampoline, 32);
+
 printf("hook complete\n");
     }
 }
@@ -283,12 +325,29 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampo
     (void)trampoline; // Unused
     if (*hooked) {
         *hooked = false;
+
+printf("unhooking target %08x, bypass %08x, tramp %08x, size %u\n", target, bypass, trampoline, size);
         DWORD targetProtection, bypassProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
-        VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+        // VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+
+readMem((void *)target, 32);
+readMem((void *)CALL_cam_render_scene, 32);
+readMem((void *)bypass, 32);
+readMem((void *)trampoline, 32);
+
+printf("memcpy %08x, %08x, %u\n", target, bypass, size);
         memcpy((void *)target, (void *)bypass, size);
+
+readMem((void *)target, 32);
+readMem((void *)CALL_cam_render_scene, 32);
+readMem((void *)bypass, 32);
+readMem((void *)trampoline, 32);
+
         VirtualProtect((void *)target, size, targetProtection, NULL);
-        VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+        // VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+
+printf("unhook complete\n");
     }
 }
 
@@ -301,9 +360,12 @@ extern const void *TRAM_cam_render_scene;
 bool hooked_cam_render_scene;
 
 void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
-    printf("hook entered!\n");
+    static int counter = 0;
+    bool print = ((counter % 300) == 0);
+    if (print) printf("hook entered!\n");
     CALL_cam_render_scene(pos, zoom);
-    printf("hook leaving!\n");
+    if (print) printf("hook leaving!\n");
+    ++counter;
 }
 
 }
@@ -347,6 +409,9 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     if (_stricmp(pMsg->message, "TurnOn") == 0) {
         //ActivateTrampoline(ExeFunction_cam_render_scene);
         install_all_hooks();
+        // FIXME: temp - remove them all again, because
+        // THEY STAY AROUND !?!?!? hOW???
+        //remove_all_hooks();
     } else if (_stricmp(pMsg->message, "TurnOff") == 0) {
         //DeactivateTrampoline(ExeFunction_cam_render_scene);
         remove_all_hooks();
@@ -450,6 +515,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     } break;
     case DLL_PROCESS_DETACH: {
         printf(PREFIX "DLL_PROCESS_DETACH\n");
+        remove_all_hooks();
         DeactivateAllTrampolines();
         if (didAllocConsole) {
             FreeConsole();
