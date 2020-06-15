@@ -1,80 +1,86 @@
 /*
-Unpatched:
 
-_cam_render_scene:
-	<original code>
+In target:
 
-Patched:
+	TARGET:     REMAINDER:
+	[ preamble ][ more code ... ]
 
-_cam_render_scene:
-	JMP _TRAM_cam_render_scene
-_cam_render_scene+9:
-	# Continuation point
+	PATCH (replaces preamble):
+	[ jmp BYPASS ]
 
-_BYPS_cam_render_scene:
-	# 9 bytes copied from unpatched _cam_render_scene
-	#
-	JMP _cam_render_scene+9
+In bypass module:
+
+	TRAMPOLINE:
+	[ preamble ][ jmp REMAINDER ]
+
+	ORIGINAL:
+	[ swizzle args ][ call TRAMPOLINE ][ cleanup ]
+
+	BYPASS:
+	[ if disabled jmp TRAMPOLINE ][ swizzle args ][ call HOOK ][ cleanup ]
+
+In C code:
+
+	extern void __cdecl ORIGINAL(args);
+	void __cdecl HOOK(args) { ... ORIGINAL(args) ... }
+
+To install:
+
+	1. Copy preamble from TARGET to TRAMPOLINE
+	2. Patch TRAMPOLINE with address of REMAINDER
+	3. Apply PATCH to TARGET
+
+To uninstall:
+
+	1. Copy preamble from TRAMPOLINE to TARGET
 
 */
 
 	.intel_syntax noprefix
 
-	.global _bypass_enable
-
-	.global _CALL_cam_render_scene
-	.global _BYPS_cam_render_scene
-	.global _TRAM_cam_render_scene
-	.extern _HOOK_cam_render_scene
-
 	.data
+
+	.global _bypass_enable
 
 _bypass_enable:
 	.byte 0x00
 
+/* ------------------------------------------------------------------------*/
+
 	.text
 
-/*
-Incoming:
-	ESP +	0	4	8	12
-		[rtn] 	Pos*	double...
-Outgoing:
-	EAX	Pos*
-	ESP +	0	4	8
-		double...	[rtn] etc...
-*/
+/* ------------------------------------------------------------------------*/
 
-_CALL_cam_render_scene:			# _cdecl thunk
-	mov	eax, dword ptr [esp+4]	# mov eax, pos
-	fld	qword ptr [esp+8]	# push zoom
-	sub	sp, 8			#	.
-	fst	qword ptr [esp+0]	#	.
-	call	_BYPS_cam_render_scene	# call prefix
-	add	sp, 8			# cleanup
-	ret
-_BYPS_cam_render_scene:			# Prefix: to be patched with 9 bytes (first two
-	.byte	0x90,0x90,0x90,0x90	# instructions) from _cam_render_scene.
-	.byte	0x90,0x90,0x90,0x90	#	.
-	.byte	0x90			#	.
-	.byte	0xE9			# JMP +imm32
-	.byte   0x00,0x00,0x00,0x00	# to be patched with rel: _cam_render_scene+9
+# void cam_render_scene(pos, zoom)		# Custom convention, caller cleanup:
+#	t2position* pos;			# <- in EAX
+#	double zoom;				# <- on stack
+#						# Void return.
 
-/*
-Incoming:
-	EAX	Pos*
-	ESP +	0	4	8
-		[rtn]	double...
-Outgoing:
-	ESP +	0	4	8	12
-		Pos*	double...	[rtn] etc...
-*/
-_TRAM_cam_render_scene:			# JMP here from patched _cam_render_scene.
-	test	byte ptr [_bypass_enable], 0xff
-	jz	_BYPS_cam_render_scene
-	fld	qword ptr [esp+4]	# push zoom
-	sub	sp, 8			#	.
-	fst	qword ptr [esp+0]	#	.
-	push	eax			# push pos
-	call	_HOOK_cam_render_scene	# call C hook
-	add	sp, 12			# cleanup
-	ret
+	.extern _HOOK_cam_render_scene
+	.global _BYPASS_cam_render_scene
+	.global _ORIGINAL_cam_render_scene
+	.global _TRAMPOLINE_cam_render_scene
+
+_TRAMPOLINE_cam_render_scene:
+	.space	9, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_cam_render_scene:
+	mov	eax, dword ptr [esp+4]		# swizzle args to custom convention
+	fld	qword ptr [esp+8]		#	.
+	sub	sp, 8				#	.
+	fst	qword ptr [esp+0]		#	.
+	call	_TRAMPOLINE_cam_render_scene	# call TRAMPOLINE
+	add	sp, 8				# cleanup
+	ret					#	.
+
+_BYPASS_cam_render_scene:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_cam_render_scene	#	.
+	fld	qword ptr [esp+4]		# swizzle args to __cdecl convention
+	sub	sp, 8				#	.
+	fst	qword ptr [esp+0]		#	.
+	push	eax				#	.
+	call	_HOOK_cam_render_scene		# call HOOK
+	add	sp, 12				# cleanup
+	ret					#	.

@@ -78,6 +78,7 @@
 #include <strings.h>
 
 #include "t2types.h"
+#include "bypass.h"
 
 using namespace std;
 
@@ -253,14 +254,6 @@ static const ExeFunctionInfo *ExeFunctionInfoTable;
 
 /*** Hooks and crooks ***/
 
-extern "C" {
-// These are defined in bypass.s:
-extern uint8_t bypass_enable;
-extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
-extern const void *BYPS_cam_render_scene;
-extern const void *TRAM_cam_render_scene;
-}
-
 void enable_hooks() {
     bypass_enable = 1;
     printf("hooks enabled\n");
@@ -281,67 +274,62 @@ printf("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
     memcpy((void *)(jmp_address+1), &offset, 4);
 }
 
-// FIXME: temp, just so I can print the address in install_hook/remove_hook below
-extern "C" {
-extern void __cdecl CALL_cam_render_scene(void* pos, double zoom);
-}
-
-void install_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampoline, uint32_t size) {
+void install_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t bypass, uint32_t size) {
     if (! *hooked) {
         *hooked = true;
-printf("hooking target %08x, bypass %08x, tramp %08x, size %u\n", target, bypass, trampoline, size);
-        DWORD targetProtection, bypassProtection;
+printf("hooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
+        DWORD targetProtection, trampolineProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
-        VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+        VirtualProtect((void *)trampoline, size+5, PAGE_EXECUTE_READWRITE, &trampolineProtection);
 
 readMem((void *)target, 32);
-readMem((void *)CALL_cam_render_scene, 32);
-readMem((void *)bypass, 32);
+readMem((void *)ORIGINAL_cam_render_scene, 32);
 readMem((void *)trampoline, 32);
+readMem((void *)bypass, 32);
 
-printf("memcpy %08x, %08x, %u\n", bypass, target, size);
-        memcpy((void *)bypass, (void *)target, size);
-printf("patch_jmp %08x, %08x\n", bypass+size, target+size);
-        patch_jmp(bypass+size, target+size);
-printf("patch_jmp %08x, %08x\n", target, trampoline);
-        patch_jmp(target, trampoline);
+printf("memcpy %08x, %08x, %u\n", trampoline, target, size);
+        memcpy((void *)trampoline, (void *)target, size);
+printf("patch_jmp %08x, %08x\n", trampoline+size, target+size);
+        patch_jmp(trampoline+size, target+size);
+printf("patch_jmp %08x, %08x\n", target, bypass);
+        patch_jmp(target, bypass);
         VirtualProtect((void *)target, size, targetProtection, NULL);
-        VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+        VirtualProtect((void *)trampoline, size+5, trampolineProtection, NULL);
 
 readMem((void *)target, 32);
-readMem((void *)CALL_cam_render_scene, 32);
-readMem((void *)bypass, 32);
+readMem((void *)ORIGINAL_cam_render_scene, 32);
 readMem((void *)trampoline, 32);
+readMem((void *)bypass, 32);
 
 printf("hook complete\n");
     }
 }
 
-void remove_hook(bool *hooked, uint32_t target, uint32_t bypass, uint32_t trampoline, uint32_t size) {
-    (void)trampoline; // Unused
+void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t bypass, uint32_t size) {
+    (void)bypass; // Unused
     if (*hooked) {
         *hooked = false;
 
-printf("unhooking target %08x, bypass %08x, tramp %08x, size %u\n", target, bypass, trampoline, size);
-        DWORD targetProtection, bypassProtection;
+printf("unhooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
+        DWORD targetProtection, trampolineProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
-        // VirtualProtect((void *)bypass, size+5, PAGE_EXECUTE_READWRITE, &bypassProtection);
+        // VirtualProtect((void *)trampoline, size+5, PAGE_EXECUTE_READWRITE, &trampolineProtection);
 
 readMem((void *)target, 32);
-readMem((void *)CALL_cam_render_scene, 32);
-readMem((void *)bypass, 32);
+readMem((void *)ORIGINAL_cam_render_scene, 32);
 readMem((void *)trampoline, 32);
+readMem((void *)bypass, 32);
 
-printf("memcpy %08x, %08x, %u\n", target, bypass, size);
-        memcpy((void *)target, (void *)bypass, size);
+printf("memcpy %08x, %08x, %u\n", target, trampoline, size);
+        memcpy((void *)target, (void *)trampoline, size);
 
 readMem((void *)target, 32);
-readMem((void *)CALL_cam_render_scene, 32);
-readMem((void *)bypass, 32);
+readMem((void *)ORIGINAL_cam_render_scene, 32);
 readMem((void *)trampoline, 32);
+readMem((void *)bypass, 32);
 
         VirtualProtect((void *)target, size, targetProtection, NULL);
-        // VirtualProtect((void *)bypass, size+5, bypassProtection, NULL);
+        // VirtualProtect((void *)trampoline, size+5, trampolineProtection, NULL);
 
 printf("unhook complete\n");
     }
@@ -355,25 +343,25 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     t2position newpos = *pos;
     newpos.fac.z = ~newpos.fac.z;
     double newzoom = 2.0 * zoom;
-    CALL_cam_render_scene(&newpos, newzoom);
+    ORIGINAL_cam_render_scene(&newpos, newzoom);
 
     // so, what breaks if we call it twice, huh?
     // nothing immediate!
-    CALL_cam_render_scene(pos, zoom);
+    ORIGINAL_cam_render_scene(pos, zoom);
 }
 
 void install_all_hooks() {
     const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
     DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
     install_hook(&hooked_cam_render_scene, baseAddress+info->offset,
-        (uint32_t)&BYPS_cam_render_scene, (uint32_t)&TRAM_cam_render_scene, info->prologueSize);
+        (uint32_t)&TRAMPOLINE_cam_render_scene, (uint32_t)&BYPASS_cam_render_scene, info->prologueSize);
 }
 
 void remove_all_hooks() {
     const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
     DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
     remove_hook(&hooked_cam_render_scene, baseAddress+info->offset,
-        (uint32_t)&BYPS_cam_render_scene, (uint32_t)&TRAM_cam_render_scene, info->prologueSize);
+        (uint32_t)&TRAMPOLINE_cam_render_scene, (uint32_t)&BYPASS_cam_render_scene, info->prologueSize);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/
@@ -526,9 +514,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             return false;
         }
 
-        printf("CALL_cam_render_scene: %08x\n", (uint32_t)(void *)CALL_cam_render_scene);
-        printf("BYPS_cam_render_scene: %08x\n", (uint32_t)&BYPS_cam_render_scene);
-        printf("TRAM_cam_render_scene: %08x\n", (uint32_t)&TRAM_cam_render_scene);
+        printf("ORIGINAL_cam_render_scene: %08x\n", (uint32_t)(void *)ORIGINAL_cam_render_scene);
+        printf("TRAMPOLINE_cam_render_scene: %08x\n", (uint32_t)&TRAMPOLINE_cam_render_scene);
+        printf("BYPASS_cam_render_scene: %08x\n", (uint32_t)&BYPASS_cam_render_scene);
 
         install_all_hooks();
 
