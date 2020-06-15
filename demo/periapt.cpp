@@ -33,6 +33,17 @@
 //     so this only affects DromEd. I guess I can live with that for now;
 //     I just have to be careful with my hooks.
 
+// NOTE: Cheat Engine hooks d3d9, as an example:
+//
+//     Cheat Engine hooks d3d9 by: first creating a window and a d3d9 device,
+//     then reading the function pointers directly from the device's vtable, and
+//     then releasing the device and destroying the window. Once it has the function
+//     pointers, then it hooks them. See DXHookBase.cpp:31, :281, :1200
+//
+//     I don't know if I'll need to do the same. Right now I only think I'll
+//     need the IDirect3DDevice9* handle in order to do some of my own drawing.
+//     However, hooking d3d9 would definitely be one way of getting that handle
+//     for myself!
 
 #include "Script.h"
 #include "ScriptModule.h"
