@@ -21,6 +21,17 @@
  *
  *****************************************************************************/
 
+// BUG: frobbiness is determined by rendering.
+//
+//     What happes in cam_render_scene() determines if something is frobbable.
+//     For example, returning immediately prevented the switch from being
+//     frobbed off. This will need to be considered for the periapt: we don't
+//     want the game thinking things in the peripat are frobbable!
+//
+//     It might be possible to work around this by attaching the camera (or
+//     setting the relevant "is attached" flag) before we do our periapt
+//     rendering; there might also be a better way.
+
 // BUG: osm is not unloaded on `script_drop`.
 //
 //     I don't understand why; both empty.osm and echo.osm get unloaded ok
@@ -32,6 +43,16 @@
 //     Once in the game, it gets loaded and unloaded with the mission okay,
 //     so this only affects DromEd. I guess I can live with that for now;
 //     I just have to be careful with my hooks.
+
+// NOTE: CoronaFrame() stores a pointer to camera location to a global.
+//
+//     CoronaFrame(), called by cam_render_scene(), stores a pointer to the
+//     camera location into a global: `g_pCamLoc = &pPos->loc;`. I don't
+//     know yet how g_pCamLoc is used, but this implies that I must not
+//     pass the address of a stack variable into cam_render_scene(); instead
+//     I'll have to modify the pos and then restore the original afterwards.
+//     In addition, there may be other side effects caused by this, or other
+//     globals used below cam_render_scene(), so must investigate further.
 
 // NOTE: Cheat Engine hooks d3d9, as an example:
 //
