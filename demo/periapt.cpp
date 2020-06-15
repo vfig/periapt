@@ -530,6 +530,25 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         printf("BYPS_cam_render_scene: %08x\n", (uint32_t)&BYPS_cam_render_scene);
         printf("TRAM_cam_render_scene: %08x\n", (uint32_t)&TRAM_cam_render_scene);
 
+        // Okay... I believe we need to separate INSTALLING and REMOVING the hooks
+        // from ENABLING and DISABLING them globally, maybe?
+        // We should INSTALL and REMOVE (rewrite memory) only when the DLL is loaded and unloaded.
+        // But we should have a single global flag that all trampolines check, and if not set then
+        // it just jumps directly into the relocated prologue as if nothing had changed; and if set
+        // then swizzle the parameters and call the hook (as it does unconditionally right now).
+
+        // The DLL not detaching thing on script_drop is weird. I could've sworn I remembered it
+        // happening. Did the [empty] msvc one detach cleanly maybe? or the [empty] gcc one?
+        // Check for my own sanity. I think the empty one might actually detach maybe?
+
+        // Well hey, looking through SCRPTPRP.CPP, SMODINFO.CPP, SCRPTMAN.CPP, SCRPTMOD.CPP, it
+        // Looks like FreeLibrary() is being called okay. So the DLL _ought_ to detach!!
+        // So also test the working gcc demo one?
+
+        // NO, I was NOT imagining it! The empty _and_ the echo one detach when dropped!!!
+        // so what the heck?
+        // also what the heck, the empty and echo ones still cause crashes? maybe that's
+        // cause of my playing fast and loose with the console in them, maybe?
 
     } break;
     case DLL_PROCESS_DETACH: {
