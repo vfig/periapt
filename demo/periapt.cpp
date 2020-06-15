@@ -406,31 +406,31 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 {
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
 
-    if (_stricmp(pMsg->message, "Sim") == 0) {
+    if (stricmp(pMsg->message, "Sim") == 0) {
         bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
         printf("Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
         if (! fStarting) {
             remove_all_hooks();
         }
     }
-    else if (_stricmp(pMsg->message, "DarkGameModeChange") == 0) {
+    else if (stricmp(pMsg->message, "DarkGameModeChange") == 0) {
         bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
         printf("DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
     }
-    if (_stricmp(pMsg->message, "BeginScript") == 0) {
+    if (stricmp(pMsg->message, "BeginScript") == 0) {
         printf("BeginScript\n");
     }
-    if (_stricmp(pMsg->message, "EndScript") == 0) {
+    if (stricmp(pMsg->message, "EndScript") == 0) {
         printf("EndScript\n");
     }
-    else if (_stricmp(pMsg->message, "TurnOn") == 0) {
+    else if (stricmp(pMsg->message, "TurnOn") == 0) {
         //ActivateTrampoline(ExeFunction_cam_render_scene);
         install_all_hooks();
         // FIXME: temp - remove them all again, because
         // THEY STAY AROUND !?!?!? hOW???
         //remove_all_hooks();
     }
-    else if (_stricmp(pMsg->message, "TurnOff") == 0) {
+    else if (stricmp(pMsg->message, "TurnOff") == 0) {
         //DeactivateTrampoline(ExeFunction_cam_render_scene);
         remove_all_hooks();
     }
@@ -442,7 +442,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 
 IScript* cScr_PeriaptControl::ScriptFactory(const char* pszName, int iHostObjId)
 {
-    if (_stricmp(pszName,"PeriaptControl") != 0)
+    if (stricmp(pszName,"PeriaptControl") != 0)
         return NULL;
 
     // Use a static string, so I don't have to make a copy.

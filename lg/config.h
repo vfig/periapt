@@ -15,11 +15,15 @@
 // Just have to rely on it being the default.
 #define __thiscall 
 
+#define stricmp _stricmp
+
 #endif // _MSC_VER
 
 #ifdef __GNUC__
 
 #define IF_NOT(a,b)	((a)?:(b))
+
+#define stricmp strcasecmp
 
 #else // !__GNUC__
 

@@ -105,7 +105,7 @@ long cScr_Echo::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceActio
 
 IScript* cScr_Echo::ScriptFactory(const char* pszName, int iHostObjId)
 {
-	if (_stricmp(pszName,"Echo") != 0)
+	if (stricmp(pszName,"Echo") != 0)
 		return NULL;
 
 	// Use a static string, so I don't have to make a copy.

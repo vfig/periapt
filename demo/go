@@ -1,6 +1,3 @@
 #!/bin/bash
-# wtf, with this defined _stricmp doesn't exist? damn stupid microsoft.
-# I guess that's why people use _DEBUG??
-#export DEBUG=1
 DEST="/e/dev/T2FM/test_osm/"
 make periapt.osm && cp periapt.osm "$DEST" && echo ok

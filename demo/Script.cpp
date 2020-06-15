@@ -77,7 +77,7 @@ long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction 
 	(void)pReply; // Unused
 	(void)eTrace; // Unused
 	long iRet = 0;
-	if (!_stricmp(pMsg->message, "ScriptPtrQuery"))
+	if (!stricmp(pMsg->message, "ScriptPtrQuery"))
 	{
 		iRet = ScriptPtrQuery(static_cast<sPtrQueryMsg*>(pMsg));
 	}
@@ -88,7 +88,7 @@ long cScript::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction 
 long cScript::ScriptPtrQuery(sPtrQueryMsg* pMsg)
 {
 	// Check class name 
-	if (!_stricmp(pMsg->pszDestClass, GetClassName()))
+	if (!stricmp(pMsg->pszDestClass, GetClassName()))
 	{
 		*(pMsg->pScriptReceptacle) = reinterpret_cast<void*>(this);
 		return 0;
