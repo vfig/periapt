@@ -56,6 +56,8 @@
 #include <string>
 #include <strings.h>
 
+#include "t2types.h"
+
 using namespace std;
 
 // FIXME: temp
@@ -327,13 +329,16 @@ printf("unhook complete\n");
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
-extern "C" void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
-    static int counter = 0;
-    bool print = ((counter % 60) == 0);
-    if (print) printf("hook entered!\n");
+extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
+    // reverse the camera Z for a laugh:
+    t2position newpos = *pos;
+    newpos.fac.z = ~newpos.fac.z;
+    double newzoom = 2.0 * zoom;
+    CALL_cam_render_scene(&newpos, newzoom);
+
+    // so, what breaks if we call it twice, huh?
+    // nothing immediate!
     CALL_cam_render_scene(pos, zoom);
-    if (print) printf("hook leaving!\n");
-    ++counter;
 }
 
 void install_all_hooks() {
