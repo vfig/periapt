@@ -493,6 +493,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         // Now that we (hopefully) have somewhere for output to go,
         // we can print some useful messages.
         printf(PREFIX "DLL_PROCESS_ATTACH\n");
+        printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
         printf(PREFIX "Base address: 0x%08x\n", (unsigned int)GetModuleHandle(NULL));
         printf(PREFIX "DLL base address: 0x%08x\n", (unsigned int)hModule);
         // Display the results of identifying the exe.
@@ -515,12 +516,21 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     } break;
     case DLL_PROCESS_DETACH: {
         printf(PREFIX "DLL_PROCESS_DETACH\n");
+        printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
         remove_all_hooks();
-        DeactivateAllTrampolines();
+        // DeactivateAllTrampolines();
         if (didAllocConsole) {
             FreeConsole();
         }
     } break;
+    // case DLL_THREAD_ATTACH: {
+    //     printf(PREFIX "DLL_THREAD_ATTACH\n");
+    //     printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
+    // } break;
+    // case DLL_THREAD_DETACH: {
+    //     printf(PREFIX "DLL_THREAD_DETACH\n");
+    //     printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
+    // } break;
     }
     return true;
 }
