@@ -361,7 +361,7 @@ bool hooked_cam_render_scene;
 
 void __cdecl HOOK_cam_render_scene(void* pos, double zoom) {
     static int counter = 0;
-    bool print = ((counter % 300) == 0);
+    bool print = ((counter % 60) == 0);
     if (print) printf("hook entered!\n");
     CALL_cam_render_scene(pos, zoom);
     if (print) printf("hook leaving!\n");
@@ -406,13 +406,31 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 {
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
 
-    if (_stricmp(pMsg->message, "TurnOn") == 0) {
+    if (_stricmp(pMsg->message, "Sim") == 0) {
+        bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
+        printf("Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
+        if (! fStarting) {
+            remove_all_hooks();
+        }
+    }
+    else if (_stricmp(pMsg->message, "DarkGameModeChange") == 0) {
+        bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
+        printf("DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
+    }
+    if (_stricmp(pMsg->message, "BeginScript") == 0) {
+        printf("BeginScript\n");
+    }
+    if (_stricmp(pMsg->message, "EndScript") == 0) {
+        printf("EndScript\n");
+    }
+    else if (_stricmp(pMsg->message, "TurnOn") == 0) {
         //ActivateTrampoline(ExeFunction_cam_render_scene);
         install_all_hooks();
         // FIXME: temp - remove them all again, because
         // THEY STAY AROUND !?!?!? hOW???
         //remove_all_hooks();
-    } else if (_stricmp(pMsg->message, "TurnOff") == 0) {
+    }
+    else if (_stricmp(pMsg->message, "TurnOff") == 0) {
         //DeactivateTrampoline(ExeFunction_cam_render_scene);
         remove_all_hooks();
     }
