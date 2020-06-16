@@ -382,25 +382,74 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         }
     }
 
-    // reverse the camera Z for a laugh:
-    t2position newpos = *pos;
-    newpos.fac.z = ~newpos.fac.z;
-    double newzoom = 2.0 * zoom;
-    ORIGINAL_cam_render_scene(&newpos, newzoom);
-
-    // so, what breaks if we call it twice, huh?
-    // nothing immediate!
-    //ORIGINAL_cam_render_scene(pos, zoom);
+    // Render the scene normally.
+    ORIGINAL_cam_render_scene(pos, zoom);
 
     if (p_d3d9device) {
-        // Let's clear a red rectangle at the bottom!
+        // Render an SS1-style rear-view mirror.
         IDirect3DDevice9* device = *p_d3d9device;
-        D3DRECT rect = { 640, 720, 1280, 1080 };
-        DWORD flags = D3DCLEAR_TARGET;
-        D3DCOLOR color = D3DCOLOR_RGBA(255, 0, 0, 255);
-        float z = 0;
-        DWORD stencil = 0;
-        device->Clear(1, &rect, flags, color, z, stencil);
+        D3DVIEWPORT9 viewport = {};
+        device->GetViewport(&viewport);
+
+        // rear-view mirror will be the top third (horizontally) and
+        // quarter (vertically) of the screen.
+        RECT rect = {
+            (long)viewport.X+(long)viewport.Width/3,
+            (long)viewport.Y+0,
+            (long)viewport.X+(2*(long)viewport.Width)/3,
+            (long)viewport.Y+(long)viewport.Height/4,
+        };
+        // // Centered rect, half the screen size:
+        // RECT rect = {
+        //     (long)viewport.X+(1*(long)viewport.Width)/4,
+        //     (long)viewport.Y+(1*(long)viewport.Height)/4,
+        //     (long)viewport.X+(3*(long)viewport.Width)/4,
+        //     (long)viewport.Y+(3*(long)viewport.Height)/4,
+        // };
+
+        // FIXME: we should probably save and restore any state
+        // that we fiddle with, for safety. But not for MAD SCIENCE!!
+        device->SetScissorRect(&rect);
+        device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+
+        // TODO: also use the stencil test, later maybe. Don't forget
+        // to clear the stencil, eh?
+        // D3DRect clearRect = {
+        //     viewport.X,
+        //     viewport.Y,
+        //     viewport.X+viewport.Width,
+        //     viewport.Y+viewport.Height
+        // };
+        // DWORD flags = D3DCLEAR_TARGET;
+        // D3DCOLOR color = D3DCOLOR_RGBA(255, 0, 0, 255);
+        // float z = 0;
+        // DWORD stencil = 0;
+        // device->Clear(1, &clearRect, flags, color, z, stencil);
+
+        // And render the reverse view.
+
+        // We modify the pos parameter we're given (and later restore it) because
+        // CoronaFrame (at least) stores a pointer to the loc! So if we passed
+        // in a local variable, that would end up pointing to random stack gibberish.
+        // It might not matter--I don't know--but safer not to risk it.
+        t2position originalPos = *pos;
+
+        // pos->fac.y = ~pos->fac.y; // reverses the pitch, but not in a nice way.
+        pos->fac.z += T2_ANGLE_PI; // 180 degree rotation to 'behind me'.
+
+        // // Move the camera a touch since the view is at the top of the screen.
+        // pos->loc.vec.z += 1.0; 
+        // // If we move the location, then we ought to cancel the cell+hint metadata:
+        // pos->loc.cell = -1;
+        // pos->loc.hint = -1;
+
+        // Calling this again might have undesirable side effects; needs research.
+        // Although right now I'm not seeing frobbiness being affected... not a
+        // very conclusive test ofc.
+        ORIGINAL_cam_render_scene(pos, zoom);
+
+        *pos = originalPos;
+        device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
     }
 }
 
