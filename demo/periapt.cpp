@@ -76,6 +76,7 @@
 #include <exception>
 #include <string>
 #include <strings.h>
+#include <d3d9.h>
 
 #include "t2types.h"
 #include "bypass.h"
@@ -342,7 +343,6 @@ printf("unhook complete\n");
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
 
-typedef struct { int foo; } IDirect3DDevice9;
 static IDirect3DDevice9** p_d3d9device;
 
 extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
@@ -390,7 +390,18 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     // so, what breaks if we call it twice, huh?
     // nothing immediate!
-    ORIGINAL_cam_render_scene(pos, zoom);
+    //ORIGINAL_cam_render_scene(pos, zoom);
+
+    if (p_d3d9device) {
+        // Let's clear a red rectangle at the bottom!
+        IDirect3DDevice9* device = *p_d3d9device;
+        D3DRECT rect = { 640, 720, 1280, 1080 };
+        DWORD flags = D3DCLEAR_TARGET;
+        D3DCOLOR color = D3DCOLOR_RGBA(255, 0, 0, 255);
+        float z = 0;
+        DWORD stencil = 0;
+        device->Clear(1, &rect, flags, color, z, stencil);
+    }
 }
 
 void install_all_hooks() {
