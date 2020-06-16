@@ -44,6 +44,9 @@
 //     so this only affects DromEd. I guess I can live with that for now;
 //     I just have to be careful with my hooks.
 
+// NOTE: Hooking cam_render_scene like this, renders UNDER the hud, but
+//     over the player's weapons.
+
 // NOTE: CoronaFrame() stores a pointer to camera location to a global.
 //
 //     CoronaFrame(), called by cam_render_scene(), stores a pointer to the
