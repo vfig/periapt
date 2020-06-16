@@ -90,18 +90,19 @@ void readMem(void *addr, DWORD len)
     // TODO: we probably can't see printfs, right?
     // if (g_pfnMPrintf) g_pfnMPrintf(...);
 
-    len = 32; // ignore whatever we were told.
-    UCHAR bytes[32];
+    UCHAR bytes[256];
+    if (len > 256) len = 256;
 
     SIZE_T bytesRead = 0;
     BOOL ok = ReadProcessMemory(hProcess, (LPCVOID)(addr), bytes, len, &bytesRead);
     if (ok) {
         printf("Bytes at %08x:\n", (unsigned int)addr);
         for (int i=0; i<(int)len; ++i) {
-            if (i%16 == 0) printf(" ");
+            if (i%16 == 0) printf("%08x (+%02x)", ((unsigned int)addr+i), (unsigned int)i);
             printf(" %02X", bytes[i]);
             if (i%16 == 15) printf("\n");
         }
+        if (len%16 != 0) printf("\n");
         printf("\n");
     }
 }
@@ -221,36 +222,38 @@ ExeIdentity IdentifyExe() {
     return ExeIdentityUnknown;
 }
 
-/*** Function info ***/
+/*** Game info ***/
 
-enum ExeFunction {
-    ExeFunction_cam_render_scene = 0,
+struct GameInfo {
+    void *cam_render_scene;
+    DWORD cam_render_scene_preamble;
+    void *graphics_info_ptr;
+    DWORD ofs_d3d9device;
+};
 
-    ExeFunctionCount,
-};
-struct ExeFunctionInfo {
-    DWORD offset;
-    DWORD prologueSize;
-};
-static const ExeFunctionInfo PerIdentityExeFunctionInfoTable[ExeIdentityCount][ExeFunctionCount] = {
+static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     // ExeThief_v126
     {
-        { 0x001bc7a0UL, 9 }, // ExeFunction_cam_render_scene
+        (void *)0x001bc7a0UL, 9, // cam_render_scene
+        0, 0 // graphics_info_ptr, ofs_d3d9device
     },
     // ExeDromEd_v126
     {
-        { 0x00286960UL, 9 }, // ExeFunction_cam_render_scene
+        (void *)0x00286960UL, 9, // cam_render_scene
+        0, 0 // graphics_info_ptr, ofs_d3d9device
     },
     // ExeThief_v127
     {
-        { 0x001bd820UL, 9 }, // ExeFunction_cam_render_scene
+        (void *)0x001bd820UL, 9, // cam_render_scene
+        0, 0 // graphics_info_ptr, ofs_d3d9device
     },
     // ExeDromEd_v127
     {
-        { 0x002895c0UL, 9 }, // ExeFunction_cam_render_scene
+        (void *)0x002895c0UL, 9, // cam_render_scene
+        (void *)0x016ec920UL, 0x3C // graphics_info_ptr, ofs_d3d9device
     },
 };
-static const ExeFunctionInfo *ExeFunctionInfoTable;
+static GameInfo GameInfoTable = {};
 
 /*** Hooks and crooks ***/
 
@@ -338,7 +341,47 @@ printf("unhook complete\n");
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
+
+typedef struct { int foo; } IDirect3DDevice9;
+static IDirect3DDevice9** p_d3d9device;
+
 extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
+    if (! p_d3d9device) {
+        // just test that it all works....
+        do {
+            LPVOID graphics_info_ptr = GameInfoTable.graphics_info_ptr;
+            printf("graphics_info_ptr is %08x\n", (unsigned int)graphics_info_ptr);
+            if (! graphics_info_ptr) break;
+            readMem((void *)graphics_info_ptr, 0x4);
+
+            LPVOID graphics_info = *((LPVOID*)graphics_info_ptr);
+            printf("graphics_info is %08x\n", (unsigned int)graphics_info);
+            if (! graphics_info) break;
+            readMem((void *)graphics_info, 0x40);
+
+            LPVOID d3d9device_ptr = ((BYTE*)graphics_info + GameInfoTable.ofs_d3d9device);
+            printf("d3d9device_ptr is %08x\n", (unsigned int)d3d9device_ptr);
+            if (! d3d9device_ptr) break;
+            readMem((void *)d3d9device_ptr, 0x4);
+
+            LPVOID d3d9device = *((LPVOID*)d3d9device_ptr);
+            printf("d3d9device is %08x\n", (unsigned int)d3d9device);
+            if (! d3d9device) break;
+            readMem((void *)d3d9device, 0x20);
+
+            LPVOID vtable = *((LPVOID*)d3d9device);
+            printf("vtable is %08x\n", (unsigned int)vtable);
+            if (! vtable) break;
+            readMem((void *)vtable, 0x80);
+        } while(0);
+
+        // Grab the pointer
+        if (GameInfoTable.graphics_info_ptr) {
+            p_d3d9device = (IDirect3DDevice9**)(*((BYTE**)GameInfoTable.graphics_info_ptr) + GameInfoTable.ofs_d3d9device);
+            printf("p_d3d9device is %08x\n", (unsigned int)p_d3d9device);
+        }
+    }
+
     // reverse the camera Z for a laugh:
     t2position newpos = *pos;
     newpos.fac.z = ~newpos.fac.z;
@@ -351,17 +394,19 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 }
 
 void install_all_hooks() {
-    const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
-    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-    install_hook(&hooked_cam_render_scene, baseAddress+info->offset,
-        (uint32_t)&TRAMPOLINE_cam_render_scene, (uint32_t)&BYPASS_cam_render_scene, info->prologueSize);
+    install_hook(&hooked_cam_render_scene,
+        (uint32_t)GameInfoTable.cam_render_scene,
+        (uint32_t)&TRAMPOLINE_cam_render_scene,
+        (uint32_t)&BYPASS_cam_render_scene,
+        GameInfoTable.cam_render_scene_preamble);
 }
 
 void remove_all_hooks() {
-    const ExeFunctionInfo *info = &ExeFunctionInfoTable[ExeFunction_cam_render_scene];
-    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-    remove_hook(&hooked_cam_render_scene, baseAddress+info->offset,
-        (uint32_t)&TRAMPOLINE_cam_render_scene, (uint32_t)&BYPASS_cam_render_scene, info->prologueSize);
+    remove_hook(&hooked_cam_render_scene,
+        (uint32_t)GameInfoTable.cam_render_scene,
+        (uint32_t)&TRAMPOLINE_cam_render_scene,
+        (uint32_t)&BYPASS_cam_render_scene,
+        GameInfoTable.cam_render_scene_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/
@@ -443,6 +488,10 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 
 #define PREFIX "periapt: "
 
+static void fixup_ptr(LPVOID& ptr, DWORD baseAddress) {
+    ptr = (void *)((DWORD)ptr + baseAddress);
+}
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
     (void)hModule; // Unused
@@ -507,8 +556,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             const ExeSignature *info = &ExeSignatureTable[identity];
             printf(PREFIX "Identified exe as %s %s (%s)\n",
                 info->name, info->version, (isEditor ? "EDITOR" : "GAME"));
-            // Assign things that depend on identity:
-            ExeFunctionInfoTable = PerIdentityExeFunctionInfoTable[identity];
+            // Grab the game info and fixup pointers
+            GameInfoTable = PerIdentityGameTable[identity];
+            DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+            fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
+            fixup_ptr(GameInfoTable.graphics_info_ptr, baseAddress);
         } else {
             printf(PREFIX "Cannot identify exe; must not continue!\n");
             return false;
