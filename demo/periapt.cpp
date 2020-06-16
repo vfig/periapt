@@ -83,21 +83,21 @@
 using namespace std;
 
 // FIXME: temp
-void readMem(void *addr, DWORD lenxx)
+void readMem(void *addr, DWORD len)
 {
     HANDLE hProcess = GetCurrentProcess();
     // HMODULE hModule = GetModuleHandle(NULL);
     // TODO: we probably can't see printfs, right?
     // if (g_pfnMPrintf) g_pfnMPrintf(...);
 
-    int len = 32; // ignore whatever we were told.
+    len = 32; // ignore whatever we were told.
     UCHAR bytes[32];
 
     SIZE_T bytesRead = 0;
     BOOL ok = ReadProcessMemory(hProcess, (LPCVOID)(addr), bytes, len, &bytesRead);
     if (ok) {
         printf("Bytes at %08x:\n", (unsigned int)addr);
-        for (int i=0; i<len; ++i) {
+        for (int i=0; i<(int)len; ++i) {
             if (i%16 == 0) printf(" ");
             printf(" %02X", bytes[i]);
             if (i%16 == 15) printf("\n");
@@ -311,7 +311,7 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
         *hooked = false;
 
 printf("unhooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
-        DWORD targetProtection, trampolineProtection;
+        DWORD targetProtection; // trampolineProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
         // VirtualProtect((void *)trampoline, size+5, PAGE_EXECUTE_READWRITE, &trampolineProtection);
 
