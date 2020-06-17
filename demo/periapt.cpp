@@ -228,36 +228,53 @@ ExeIdentity IdentifyExe() {
 
 /*** Game info ***/
 
+static void fixup_ptr(LPVOID& ptr, DWORD baseAddress) {
+    ptr = (void *)((DWORD)ptr + baseAddress);
+}
+
 struct GameInfo {
     void *cam_render_scene;
     DWORD cam_render_scene_preamble;
+    void *cD8Renderer_Clear;
+    DWORD cD8Renderer_Clear_preamble;
     void *graphics_info_ptr;
     DWORD ofs_d3d9device;
 };
+
+static GameInfo GameInfoTable = {};
+
+void FixupGameInfoTable(DWORD baseAddress) {
+    fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
+    fixup_ptr(GameInfoTable.cD8Renderer_Clear, baseAddress);
+    fixup_ptr(GameInfoTable.graphics_info_ptr, baseAddress);
+}
 
 static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     // ExeThief_v126
     {
         (void *)0x001bc7a0UL, 9,    // cam_render_scene
+        (void *)0x0020ce80UL, 6,    // cD8Renderer_Clear
         (void *)0x005d8d40UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
     },
     // ExeDromEd_v126
     {
         (void *)0x00286960UL, 9,    // cam_render_scene
+        (void *)0x002e62a0UL, 6,    // cD8Renderer_Clear
         (void *)0x016e878cUL, 0x3C, // graphics_info_ptr, ofs_d3d9device
     },
     // ExeThief_v127
     {
         (void *)0x001bd820UL, 9,    // cam_render_scene
+        (void *)0x0020dff0UL, 6,    // cD8Renderer_Clear
         (void *)0x005d9d88UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
     },
     // ExeDromEd_v127
     {
         (void *)0x002895c0UL, 9,    // cam_render_scene
+        (void *)0x002e8e60UL, 6,    // cD8Renderer_Clear
         (void *)0x016ec920UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
     },
 };
-static GameInfo GameInfoTable = {};
 
 /*** Hooks and crooks ***/
 
@@ -342,13 +359,11 @@ printf("unhook complete\n");
     }
 }
 
-// TODO: I don't think we want to hook and unhook many parts individually,
-// so change this to use a single flag for if all hooks are installed or not.
-bool hooked_cam_render_scene;
-
 static IDirect3DDevice9** p_d3d9device;
+static bool prevent_target_stencil_clear;
 
-extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
+extern "C"
+void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     if (! p_d3d9device) {
         // just test that it all works....
         do {
@@ -394,6 +409,9 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
 
+#define USE_SCISSOR 0
+#define USE_STENCIL 1
+#if USE_SCISSOR
         // rear-view mirror will be the top third (horizontally) and
         // quarter (vertically) of the screen.
         RECT rect = {
@@ -414,20 +432,54 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // that we fiddle with, for safety. But not for MAD SCIENCE!!
         device->SetScissorRect(&rect);
         device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-
-        // TODO: also use the stencil test, later maybe. Don't forget
-        // to clear the stencil, eh?
-        // D3DRect clearRect = {
-        //     viewport.X,
-        //     viewport.Y,
-        //     viewport.X+viewport.Width,
-        //     viewport.Y+viewport.Height
-        // };
-        // DWORD flags = D3DCLEAR_TARGET;
-        // D3DCOLOR color = D3DCOLOR_RGBA(255, 0, 0, 255);
-        // float z = 0;
-        // DWORD stencil = 0;
-        // device->Clear(1, &clearRect, flags, color, z, stencil);
+#endif // USE_SCISSOR
+#if USE_STENCIL
+        D3DRECT viewportRect = {
+            (long)viewport.X,
+            (long)viewport.Y,
+            (long)viewport.X+(long)viewport.Width,
+            (long)viewport.Y+(long)viewport.Height,
+        };
+        D3DRECT periaptRect = {
+            (long)viewport.X+(long)viewport.Width/3,
+            (long)viewport.Y+0,
+            (long)viewport.X+(2*(long)viewport.Width)/3,
+            (long)viewport.Y+(long)viewport.Height/4,
+        };
+        // device->Clear(1, &viewportRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(255,0,0,255), 0, 0);
+        // device->Clear(1, &periaptRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(0,255,255,255), 0, 0);
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        device->Clear(1, &viewportRect, D3DCLEAR_STENCIL, 0, 0, 0);
+        device->Clear(1, &periaptRect, D3DCLEAR_STENCIL, 0, 0, 1);
+        // Do some really, really hacky 'rounded' corners so the
+        // difference from the scissor is clear:
+        long cornerWidth = 30;
+        long cornerHeight = 30;
+        for (int y=0; y<2; ++y) {
+            for (int x=0; x<2; ++x) {
+                D3DRECT cornerRect = {
+                    ((x == 0) ? periaptRect.x1 : (periaptRect.x2 - cornerWidth)),
+                    ((y == 0) ? periaptRect.y1 : (periaptRect.y2 - cornerHeight)),
+                    ((x == 0) ? (periaptRect.x1 + cornerWidth) : periaptRect.x2),
+                    ((y == 0) ? (periaptRect.y1 + cornerHeight) : periaptRect.y2),
+                };
+                device->Clear(1, &cornerRect, D3DCLEAR_STENCIL, 0, 0, 0);
+            }
+        }
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILREF, 0x01);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
+        // The original cam_render_scene will clear target+zbuffer+stencil
+        // before drawing. We want to keep the previous scene render, so we
+        // prevent clearing the target. And we want to keep what we've just
+        // put in the stencil, so we prevent clearing the stencil too.
+        prevent_target_stencil_clear = true;
+#endif // USE_STENCIL
 
         // And render the reverse view.
 
@@ -446,15 +498,38 @@ extern "C" void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // pos->loc.cell = -1;
         // pos->loc.hint = -1;
 
+        // PROBLEM: this ends up calling device->Clear() again and clearing
+        // the whole stencil buffer! Blargh.
+
         // Calling this again might have undesirable side effects; needs research.
         // Although right now I'm not seeing frobbiness being affected... not a
         // very conclusive test ofc.
         ORIGINAL_cam_render_scene(pos, zoom);
 
         *pos = originalPos;
+
+#if USE_STENCIL
+        prevent_target_stencil_clear = false;
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+#endif
+#if USE_SCISSOR
         device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+#endif
     }
 }
+
+extern "C"
+void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) {
+    if (prevent_target_stencil_clear) {
+        Flags &= ~(D3DCLEAR_TARGET | D3DCLEAR_STENCIL);
+    }
+    ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
+}
+
+// TODO: I don't think we want to hook and unhook many parts individually,
+// so change this to use a single flag for if all hooks are installed or not.
+bool hooked_cam_render_scene;
+bool hooked_cD8Renderer_Clear;
 
 void install_all_hooks() {
     install_hook(&hooked_cam_render_scene,
@@ -462,9 +537,19 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_cam_render_scene,
         (uint32_t)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
+    install_hook(&hooked_cD8Renderer_Clear,
+        (uint32_t)GameInfoTable.cD8Renderer_Clear,
+        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
+        (uint32_t)&BYPASS_cD8Renderer_Clear,
+        GameInfoTable.cD8Renderer_Clear_preamble);
 }
 
 void remove_all_hooks() {
+    remove_hook(&hooked_cD8Renderer_Clear,
+        (uint32_t)GameInfoTable.cD8Renderer_Clear,
+        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
+        (uint32_t)&BYPASS_cD8Renderer_Clear,
+        GameInfoTable.cD8Renderer_Clear_preamble);
     remove_hook(&hooked_cam_render_scene,
         (uint32_t)GameInfoTable.cam_render_scene,
         (uint32_t)&TRAMPOLINE_cam_render_scene,
@@ -551,10 +636,6 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 
 #define PREFIX "periapt: "
 
-static void fixup_ptr(LPVOID& ptr, DWORD baseAddress) {
-    ptr = (void *)((DWORD)ptr + baseAddress);
-}
-
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
     (void)hModule; // Unused
@@ -625,8 +706,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             printf("raw GameInfoTable.cam_render_scene: %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
             printf("raw GameInfoTable.graphics_info_ptr: %08x\n", (unsigned int)GameInfoTable.graphics_info_ptr);
             DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-            fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
-            fixup_ptr(GameInfoTable.graphics_info_ptr, baseAddress);
+            FixupGameInfoTable(baseAddress);
             printf("fixed GameInfoTable.cam_render_scene: %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
             printf("fixed GameInfoTable.graphics_info_ptr: %08x\n", (unsigned int)GameInfoTable.graphics_info_ptr);
         } else {

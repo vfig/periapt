@@ -52,8 +52,8 @@ _bypass_enable:
 /* ------------------------------------------------------------------------*/
 
 # void cam_render_scene(pos, zoom)		# Custom convention, caller cleanup:
-#	t2position* pos;			# <- in EAX
-#	double zoom;				# <- on stack
+#	t2position* pos;			# EAX
+#	double zoom;				# [ESP+04]
 #						# Void return.
 
 	.extern _HOOK_cam_render_scene
@@ -84,3 +84,31 @@ _BYPASS_cam_render_scene:
 	call	_HOOK_cam_render_scene		# call HOOK
 	add	sp, 12				# cleanup
 	ret					#	.
+
+/* ------------------------------------------------------------------------*/
+
+# void cD8Renderer::Clear			# __stdcall
+#	DWORD Count,				# [ESP+04]
+#	CONST D3DRECT* pRects,			# [ESP+08]
+#	DWORD Flags,				# [ESP+0C]
+#	D3DCOLOR Color,				# [ESP+10]
+#	float Z,				# [ESP+14]
+#	DWORD Stencil				# [ESP+18]
+#						# Void return.
+
+	.extern _HOOK_cD8Renderer_Clear@24
+	.global _BYPASS_cD8Renderer_Clear
+	.global _ORIGINAL_cD8Renderer_Clear@24
+	.global _TRAMPOLINE_cD8Renderer_Clear
+
+_TRAMPOLINE_cD8Renderer_Clear:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_cD8Renderer_Clear@24:
+	jmp	_TRAMPOLINE_cD8Renderer_Clear	# call TRAMPOLINE
+
+_BYPASS_cD8Renderer_Clear:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_cD8Renderer_Clear	#	.
+	jmp	_HOOK_cD8Renderer_Clear@24	# call HOOK
