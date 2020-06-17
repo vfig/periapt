@@ -237,44 +237,45 @@ struct GameInfo {
     DWORD cam_render_scene_preamble;
     void *cD8Renderer_Clear;
     DWORD cD8Renderer_Clear_preamble;
-    void *graphics_info_ptr;
-    DWORD ofs_d3d9device;
+    void *d3d9device_ptr;
 };
 
 static GameInfo GameInfoTable = {};
-
-void FixupGameInfoTable(DWORD baseAddress) {
-    fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
-    fixup_ptr(GameInfoTable.cD8Renderer_Clear, baseAddress);
-    fixup_ptr(GameInfoTable.graphics_info_ptr, baseAddress);
-}
 
 static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     // ExeThief_v126
     {
         (void *)0x001bc7a0UL, 9,    // cam_render_scene
         (void *)0x0020ce80UL, 6,    // cD8Renderer_Clear
-        (void *)0x005d8d40UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
+        (void *)0x005d8118UL,       // d3d9device_ptr
     },
     // ExeDromEd_v126
     {
         (void *)0x00286960UL, 9,    // cam_render_scene
         (void *)0x002e62a0UL, 6,    // cD8Renderer_Clear
-        (void *)0x016e878cUL, 0x3C, // graphics_info_ptr, ofs_d3d9device
+        (void *)0x016e7b50UL,       // d3d9device_ptr
     },
     // ExeThief_v127
     {
         (void *)0x001bd820UL, 9,    // cam_render_scene
         (void *)0x0020dff0UL, 6,    // cD8Renderer_Clear
-        (void *)0x005d9d88UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
+        (void *)0x005d915cUL,       // d3d9device_ptr
     },
     // ExeDromEd_v127
     {
         (void *)0x002895c0UL, 9,    // cam_render_scene
         (void *)0x002e8e60UL, 6,    // cD8Renderer_Clear
-        (void *)0x016ec920UL, 0x3C, // graphics_info_ptr, ofs_d3d9device
+        (void *)0x016ebce0UL,       // d3d9device_ptr
     },
 };
+
+void LoadGameInfoTable(ExeIdentity identity) {
+    GameInfoTable = PerIdentityGameTable[identity];
+    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
+    fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
+    fixup_ptr(GameInfoTable.cD8Renderer_Clear, baseAddress);
+    fixup_ptr(GameInfoTable.d3d9device_ptr, baseAddress);
+}
 
 /*** Hooks and crooks ***/
 
@@ -365,38 +366,12 @@ static bool prevent_target_stencil_clear;
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     if (! p_d3d9device) {
-        // just test that it all works....
-        do {
-            LPVOID graphics_info_ptr = GameInfoTable.graphics_info_ptr;
-            printf("graphics_info_ptr is %08x\n", (unsigned int)graphics_info_ptr);
-            if (! graphics_info_ptr) break;
-            readMem((void *)graphics_info_ptr, 0x4);
-
-            LPVOID graphics_info = *((LPVOID*)graphics_info_ptr);
-            printf("graphics_info is %08x\n", (unsigned int)graphics_info);
-            if (! graphics_info) break;
-            readMem((void *)graphics_info, 0x40);
-
-            LPVOID d3d9device_ptr = ((BYTE*)graphics_info + GameInfoTable.ofs_d3d9device);
-            printf("d3d9device_ptr is %08x\n", (unsigned int)d3d9device_ptr);
-            if (! d3d9device_ptr) break;
-            readMem((void *)d3d9device_ptr, 0x4);
-
-            LPVOID d3d9device = *((LPVOID*)d3d9device_ptr);
-            printf("d3d9device is %08x\n", (unsigned int)d3d9device);
-            if (! d3d9device) break;
-            readMem((void *)d3d9device, 0x20);
-
-            LPVOID vtable = *((LPVOID*)d3d9device);
-            printf("vtable is %08x\n", (unsigned int)vtable);
-            if (! vtable) break;
-            readMem((void *)vtable, 0x80);
-        } while(0);
-
-        // Grab the pointer
-        if (GameInfoTable.graphics_info_ptr) {
-            p_d3d9device = (IDirect3DDevice9**)(*((BYTE**)GameInfoTable.graphics_info_ptr) + GameInfoTable.ofs_d3d9device);
+        if (GameInfoTable.d3d9device_ptr) {
+            p_d3d9device = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
             printf("p_d3d9device is %08x\n", (unsigned int)p_d3d9device);
+            if (p_d3d9device) {
+                printf("d3d9device is %08x\n", (unsigned int)(*p_d3d9device));
+            }
         }
     }
 
@@ -629,7 +604,7 @@ const sScrClassDesc cScriptModule::sm_ScriptsArray[] = {
 };
 const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/sizeof(sm_ScriptsArray[0]);
 
-/*** Function patching ***/
+/*** Entry point ***/
 
 #include <stdio.h>
 #include <windows.h>
@@ -689,38 +664,26 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             int height = (int)(rect.bottom - rect.top);
             MoveWindow(hwnd, left, top, width, height, TRUE);
         }
+
         // Now that we (hopefully) have somewhere for output to go,
         // we can print some useful messages.
         printf(PREFIX "DLL_PROCESS_ATTACH\n");
         printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
         printf(PREFIX "Base address: 0x%08x\n", (unsigned int)GetModuleHandle(NULL));
         printf(PREFIX "DLL base address: 0x%08x\n", (unsigned int)hModule);
+
         // Display the results of identifying the exe.
         if (isIdentified) {
             const ExeSignature *info = &ExeSignatureTable[identity];
             printf(PREFIX "Identified exe as %s %s (%s)\n",
                 info->name, info->version, (isEditor ? "EDITOR" : "GAME"));
-            // Grab the game info and fixup pointers
-            GameInfoTable = PerIdentityGameTable[identity];
-
-            printf("raw GameInfoTable.cam_render_scene: %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
-            printf("raw GameInfoTable.graphics_info_ptr: %08x\n", (unsigned int)GameInfoTable.graphics_info_ptr);
-            DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-            FixupGameInfoTable(baseAddress);
-            printf("fixed GameInfoTable.cam_render_scene: %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
-            printf("fixed GameInfoTable.graphics_info_ptr: %08x\n", (unsigned int)GameInfoTable.graphics_info_ptr);
         } else {
             printf(PREFIX "Cannot identify exe; must not continue!\n");
             return false;
         }
 
-        printf("ORIGINAL_cam_render_scene: %08x\n", (uint32_t)(void *)ORIGINAL_cam_render_scene);
-        printf("TRAMPOLINE_cam_render_scene: %08x\n", (uint32_t)&TRAMPOLINE_cam_render_scene);
-        printf("BYPASS_cam_render_scene: %08x\n", (uint32_t)&BYPASS_cam_render_scene);
-        printf("HOOK_cam_render_scene: %08x\n", (uint32_t)&HOOK_cam_render_scene);
-
+        LoadGameInfoTable(identity);
         install_all_hooks();
-
     } break;
     case DLL_PROCESS_DETACH: {
         remove_all_hooks();
