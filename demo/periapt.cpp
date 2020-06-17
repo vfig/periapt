@@ -279,6 +279,14 @@ void LoadGameInfoTable(ExeIdentity identity) {
 
 /*** Hooks and crooks ***/
 
+#define HOOKS_SPEW 1
+
+#if HOOKS_SPEW
+#define hooks_spew(...) printf("periapt: " __VA_ARGS__)
+#else
+#define hooks_spew(...) ((void)0)
+#endif
+
 void enable_hooks() {
     bypass_enable = 1;
     printf("hooks enabled\n");
@@ -292,41 +300,41 @@ void disable_hooks() {
 void patch_jmp(uint32_t jmp_address, uint32_t dest_address) {
     const uint8_t jmp = 0xE9;
     int32_t offset = (dest_address - (jmp_address+5));
-printf("  offset: %08x (%d)\n", offset, offset);
-printf("  memcpy %08x, %08x, %u\n", jmp_address, (uint32_t)&jmp, 1);
+    hooks_spew("  offset: %08x (%d)\n", offset, offset);
+    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address, (uint32_t)&jmp, 1);
     memcpy((void *)jmp_address, &jmp, 1);
-printf("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
+    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
     memcpy((void *)(jmp_address+1), &offset, 4);
 }
 
 void install_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t bypass, uint32_t size) {
     if (! *hooked) {
         *hooked = true;
-printf("hooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
+        hooks_spew("hooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
         DWORD targetProtection, trampolineProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
         VirtualProtect((void *)trampoline, size+5, PAGE_EXECUTE_READWRITE, &trampolineProtection);
-
-readMem((void *)target, 32);
-readMem((void *)ORIGINAL_cam_render_scene, 32);
-readMem((void *)trampoline, 32);
-readMem((void *)bypass, 32);
-
-printf("memcpy %08x, %08x, %u\n", trampoline, target, size);
+#if HOOKS_SPEW
+        readMem((void *)target, 32);
+        readMem((void *)ORIGINAL_cam_render_scene, 32);
+        readMem((void *)trampoline, 32);
+        readMem((void *)bypass, 32);
+#endif
+        hooks_spew("memcpy %08x, %08x, %u\n", trampoline, target, size);
         memcpy((void *)trampoline, (void *)target, size);
-printf("patch_jmp %08x, %08x\n", trampoline+size, target+size);
+        hooks_spew("patch_jmp %08x, %08x\n", trampoline+size, target+size);
         patch_jmp(trampoline+size, target+size);
-printf("patch_jmp %08x, %08x\n", target, bypass);
+        hooks_spew("patch_jmp %08x, %08x\n", target, bypass);
         patch_jmp(target, bypass);
         VirtualProtect((void *)target, size, targetProtection, NULL);
         VirtualProtect((void *)trampoline, size+5, trampolineProtection, NULL);
-
-readMem((void *)target, 32);
-readMem((void *)ORIGINAL_cam_render_scene, 32);
-readMem((void *)trampoline, 32);
-readMem((void *)bypass, 32);
-
-printf("hook complete\n");
+#if HOOKS_SPEW
+        readMem((void *)target, 32);
+        readMem((void *)ORIGINAL_cam_render_scene, 32);
+        readMem((void *)trampoline, 32);
+        readMem((void *)bypass, 32);
+#endif
+        hooks_spew("hook complete\n");
     }
 }
 
@@ -334,29 +342,25 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     (void)bypass; // Unused
     if (*hooked) {
         *hooked = false;
-
-printf("unhooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
-        DWORD targetProtection; // trampolineProtection;
+        hooks_spew("unhooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
+        DWORD targetProtection;
         VirtualProtect((void *)target, size, PAGE_EXECUTE_READWRITE, &targetProtection);
-        // VirtualProtect((void *)trampoline, size+5, PAGE_EXECUTE_READWRITE, &trampolineProtection);
-
-readMem((void *)target, 32);
-readMem((void *)ORIGINAL_cam_render_scene, 32);
-readMem((void *)trampoline, 32);
-readMem((void *)bypass, 32);
-
-printf("memcpy %08x, %08x, %u\n", target, trampoline, size);
+#if HOOKS_SPEW
+        readMem((void *)target, 32);
+        readMem((void *)ORIGINAL_cam_render_scene, 32);
+        readMem((void *)trampoline, 32);
+        readMem((void *)bypass, 32);
+#endif
+        hooks_spew("memcpy %08x, %08x, %u\n", target, trampoline, size);
         memcpy((void *)target, (void *)trampoline, size);
-
-readMem((void *)target, 32);
-readMem((void *)ORIGINAL_cam_render_scene, 32);
-readMem((void *)trampoline, 32);
-readMem((void *)bypass, 32);
-
+#if HOOKS_SPEW
+        readMem((void *)target, 32);
+        readMem((void *)ORIGINAL_cam_render_scene, 32);
+        readMem((void *)trampoline, 32);
+        readMem((void *)bypass, 32);
+#endif
         VirtualProtect((void *)target, size, targetProtection, NULL);
-        // VirtualProtect((void *)trampoline, size+5, trampolineProtection, NULL);
-
-printf("unhook complete\n");
+        hooks_spew("unhook complete\n");
     }
 }
 
