@@ -253,18 +253,19 @@ ExeIdentity IdentifyExe() {
 
 /*** Game info ***/
 
-static void fixup_ptr(LPVOID& ptr, DWORD baseAddress) {
-    ptr = (void *)((DWORD)ptr + baseAddress);
-}
+// Data to be accessed:
+IDirect3DDevice9 **t2_d3d9device_ptr;
 
 struct GameInfo {
-    void *cam_render_scene;
+    // Functions to be hooked:
+    DWORD cam_render_scene;
     DWORD cam_render_scene_preamble;
-    void *cD8Renderer_Clear;
+    DWORD cD8Renderer_Clear;
     DWORD cD8Renderer_Clear_preamble;
-    void *dark_render_overlays;
+    DWORD dark_render_overlays;
     DWORD dark_render_overlays_preamble;
-    void *d3d9device_ptr;
+    // Data to be accessed:
+    DWORD d3d9device_ptr;
 };
 
 static GameInfo GameInfoTable = {};
@@ -272,41 +273,55 @@ static GameInfo GameInfoTable = {};
 static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     // ExeThief_v126
     {
-        (void *)0x001bc7a0UL, 9,    // cam_render_scene
-        (void *)0x0020ce80UL, 6,    // cD8Renderer_Clear
-        (void *)0, 0,               // dark_render_overlays
-        (void *)0x005d8118UL,       // d3d9device_ptr
+        0x001bc7a0UL, 9,    // cam_render_scene
+        0x0020ce80UL, 6,    // cD8Renderer_Clear
+        0, 0,               // dark_render_overlays
+        0x005d8118UL,       // d3d9device_ptr
     },
     // ExeDromEd_v126
     {
-        (void *)0x00286960UL, 9,    // cam_render_scene
-        (void *)0x002e62a0UL, 6,    // cD8Renderer_Clear
-        (void *)0, 0,               // dark_render_overlays
-        (void *)0x016e7b50UL,       // d3d9device_ptr
+        0x00286960UL, 9,    // cam_render_scene
+        0x002e62a0UL, 6,    // cD8Renderer_Clear
+        0, 0,               // dark_render_overlays
+        0x016e7b50UL,       // d3d9device_ptr
     },
     // ExeThief_v127
     {
-        (void *)0x001bd820UL, 9,    // cam_render_scene
-        (void *)0x0020dff0UL, 6,    // cD8Renderer_Clear
-        (void *)0x00058330UL, 6,    // dark_render_overlays (maybe!)
-        (void *)0x005d915cUL,       // d3d9device_ptr
+        0x001bd820UL, 9,    // cam_render_scene
+        0x0020dff0UL, 6,    // cD8Renderer_Clear
+        0x00058330UL, 6,    // dark_render_overlays
+        0x005d915cUL,       // d3d9device_ptr
     },
     // ExeDromEd_v127
     {
-        (void *)0x002895c0UL, 9,    // cam_render_scene
-        (void *)0x002e8e60UL, 6,    // cD8Renderer_Clear
-        (void *)0, 0,               // dark_render_overlays
-        (void *)0x016ebce0UL,       // d3d9device_ptr
+        0x002895c0UL, 9,    // cam_render_scene
+        0x002e8e60UL, 6,    // cD8Renderer_Clear
+        0x00068750UL, 6,    // dark_render_overlays
+        0x016ebce0UL,       // d3d9device_ptr
     },
 };
 
+static void fixup_addr(DWORD* address, DWORD baseAddress) {
+    *address = (*address + baseAddress);
+}
+
 void LoadGameInfoTable(ExeIdentity identity) {
     GameInfoTable = PerIdentityGameTable[identity];
-    DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
-    fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
-    fixup_ptr(GameInfoTable.cD8Renderer_Clear, baseAddress);
-    fixup_ptr(GameInfoTable.dark_render_overlays, baseAddress);
-    fixup_ptr(GameInfoTable.d3d9device_ptr, baseAddress);
+
+    DWORD base = (DWORD)GetModuleHandle(NULL);
+    fixup_addr(&GameInfoTable.cam_render_scene, base);
+    fixup_addr(&GameInfoTable.cD8Renderer_Clear, base);
+    fixup_addr(&GameInfoTable.dark_render_overlays, base);
+    fixup_addr(&GameInfoTable.d3d9device_ptr, base);
+
+    t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
+
+#if HOOKS_SPEW
+    printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
+    printf("periapt: cD8Renderer_Clear = %08x\n", (unsigned int)GameInfoTable.cD8Renderer_Clear);
+    printf("periapt: dark_render_overlays = %08x\n", (unsigned int)GameInfoTable.dark_render_overlays);
+    printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
+#endif
 }
 
 /*** Hooks and crooks ***/
@@ -396,27 +411,25 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     }
 }
 
-static IDirect3DDevice9** p_d3d9device;
 static bool prevent_target_stencil_clear;
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
-    if (! p_d3d9device) {
-        if (GameInfoTable.d3d9device_ptr) {
-            p_d3d9device = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
-            printf("p_d3d9device is %08x\n", (unsigned int)p_d3d9device);
-            if (p_d3d9device) {
-                printf("d3d9device is %08x\n", (unsigned int)(*p_d3d9device));
-            }
-        }
-    }
-
     // Render the scene normally.
     ORIGINAL_cam_render_scene(pos, zoom);
 
-    if (p_d3d9device) {
+#if HOOKS_SPEW
+    static bool spewed = false;
+    if (! spewed) {
+        spewed = true;
+        printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
+        if (t2_d3d9device_ptr) printf("periapt: d3d9device = %08x\n", (unsigned int)(*t2_d3d9device_ptr));
+    }
+#endif
+
+    if (t2_d3d9device_ptr) {
         // Render an SS1-style rear-view mirror.
-        IDirect3DDevice9* device = *p_d3d9device;
+        IDirect3DDevice9* device = *t2_d3d9device_ptr;
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
 
@@ -549,16 +562,19 @@ bool hooked_cD8Renderer_Clear;
 bool hooked_dark_render_overlays;
 
 void install_all_hooks() {
+    hooks_spew("Hooking cam_render_scene...\n");
     install_hook(&hooked_cam_render_scene,
         (uint32_t)GameInfoTable.cam_render_scene,
         (uint32_t)&TRAMPOLINE_cam_render_scene,
         (uint32_t)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
+    hooks_spew("Hooking cD8Renderer::Clear...\n");
     install_hook(&hooked_cD8Renderer_Clear,
         (uint32_t)GameInfoTable.cD8Renderer_Clear,
         (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
         (uint32_t)&BYPASS_cD8Renderer_Clear,
         GameInfoTable.cD8Renderer_Clear_preamble);
+    hooks_spew("Hooking dark_render_overlays...\n");
     install_hook(&hooked_dark_render_overlays,
         (uint32_t)GameInfoTable.dark_render_overlays,
         (uint32_t)&TRAMPOLINE_dark_render_overlays,
@@ -567,16 +583,19 @@ void install_all_hooks() {
 }
 
 void remove_all_hooks() {
+    hooks_spew("Unhooking cam_render_scene...\n");
     remove_hook(&hooked_cam_render_scene,
         (uint32_t)GameInfoTable.cam_render_scene,
         (uint32_t)&TRAMPOLINE_cam_render_scene,
         (uint32_t)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
+    hooks_spew("Unhooking cD8Renderer::Clear...\n");
     remove_hook(&hooked_cD8Renderer_Clear,
         (uint32_t)GameInfoTable.cD8Renderer_Clear,
         (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
         (uint32_t)&BYPASS_cD8Renderer_Clear,
         GameInfoTable.cD8Renderer_Clear_preamble);
+    hooks_spew("Unhooking dark_render_overlays...\n");
     remove_hook(&hooked_dark_render_overlays,
         (uint32_t)GameInfoTable.dark_render_overlays,
         (uint32_t)&TRAMPOLINE_dark_render_overlays,
