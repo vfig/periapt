@@ -69,6 +69,16 @@
 //     However, hooking d3d9 would definitely be one way of getting that handle
 //     for myself!
 
+// TODO: Clean up this directory structure a bunch.
+
+// TODO: Sort out better printing (mprintf if possible, and all prefixed).
+
+// TODO: Replace go script with make install?
+
+// QUERY: Can we hook into NewDark's .mtl rendering?
+
+// QUERY: Can NewDark's .mtl rendering do useful Z or stencil work for us?
+
 #include "Script.h"
 #include "ScriptModule.h"
 
