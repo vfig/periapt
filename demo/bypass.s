@@ -112,3 +112,25 @@ _BYPASS_cD8Renderer_Clear:
 	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
 	jz	_TRAMPOLINE_cD8Renderer_Clear	#	.
 	jmp	_HOOK_cD8Renderer_Clear@24	# call HOOK
+
+/* ------------------------------------------------------------------------*/
+
+# void dark_render_overlays(void)		# __cdecl
+#						# Void return.
+
+	.extern _HOOK_dark_render_overlays
+	.global _BYPASS_dark_render_overlays
+	.global _ORIGINAL_dark_render_overlays
+	.global _TRAMPOLINE_dark_render_overlays
+
+_TRAMPOLINE_dark_render_overlays:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_dark_render_overlays:
+	jmp	_TRAMPOLINE_dark_render_overlays	# call TRAMPOLINE
+
+_BYPASS_dark_render_overlays:
+	test	byte ptr [_bypass_enable], 0xff		# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_dark_render_overlays	#	.
+	jmp	_HOOK_dark_render_overlays		# call HOOK

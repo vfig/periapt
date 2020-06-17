@@ -262,6 +262,8 @@ struct GameInfo {
     DWORD cam_render_scene_preamble;
     void *cD8Renderer_Clear;
     DWORD cD8Renderer_Clear_preamble;
+    void *dark_render_overlays;
+    DWORD dark_render_overlays_preamble;
     void *d3d9device_ptr;
 };
 
@@ -272,24 +274,28 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     {
         (void *)0x001bc7a0UL, 9,    // cam_render_scene
         (void *)0x0020ce80UL, 6,    // cD8Renderer_Clear
+        (void *)0, 0,               // dark_render_overlays
         (void *)0x005d8118UL,       // d3d9device_ptr
     },
     // ExeDromEd_v126
     {
         (void *)0x00286960UL, 9,    // cam_render_scene
         (void *)0x002e62a0UL, 6,    // cD8Renderer_Clear
+        (void *)0, 0,               // dark_render_overlays
         (void *)0x016e7b50UL,       // d3d9device_ptr
     },
     // ExeThief_v127
     {
         (void *)0x001bd820UL, 9,    // cam_render_scene
         (void *)0x0020dff0UL, 6,    // cD8Renderer_Clear
+        (void *)0x00058330UL, 6,    // dark_render_overlays (maybe!)
         (void *)0x005d915cUL,       // d3d9device_ptr
     },
     // ExeDromEd_v127
     {
         (void *)0x002895c0UL, 9,    // cam_render_scene
         (void *)0x002e8e60UL, 6,    // cD8Renderer_Clear
+        (void *)0, 0,               // dark_render_overlays
         (void *)0x016ebce0UL,       // d3d9device_ptr
     },
 };
@@ -299,6 +305,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     DWORD baseAddress = (DWORD)GetModuleHandle(NULL);
     fixup_ptr(GameInfoTable.cam_render_scene, baseAddress);
     fixup_ptr(GameInfoTable.cD8Renderer_Clear, baseAddress);
+    fixup_ptr(GameInfoTable.dark_render_overlays, baseAddress);
     fixup_ptr(GameInfoTable.d3d9device_ptr, baseAddress);
 }
 
@@ -530,10 +537,16 @@ void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD 
     ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
 }
 
+extern "C"
+void __cdecl HOOK_dark_render_overlays(void) {
+    ORIGINAL_dark_render_overlays();
+}
+
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
 bool hooked_cD8Renderer_Clear;
+bool hooked_dark_render_overlays;
 
 void install_all_hooks() {
     install_hook(&hooked_cam_render_scene,
@@ -546,19 +559,29 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
         (uint32_t)&BYPASS_cD8Renderer_Clear,
         GameInfoTable.cD8Renderer_Clear_preamble);
+    install_hook(&hooked_dark_render_overlays,
+        (uint32_t)GameInfoTable.dark_render_overlays,
+        (uint32_t)&TRAMPOLINE_dark_render_overlays,
+        (uint32_t)&BYPASS_dark_render_overlays,
+        GameInfoTable.dark_render_overlays_preamble);
 }
 
 void remove_all_hooks() {
-    remove_hook(&hooked_cD8Renderer_Clear,
-        (uint32_t)GameInfoTable.cD8Renderer_Clear,
-        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
-        (uint32_t)&BYPASS_cD8Renderer_Clear,
-        GameInfoTable.cD8Renderer_Clear_preamble);
     remove_hook(&hooked_cam_render_scene,
         (uint32_t)GameInfoTable.cam_render_scene,
         (uint32_t)&TRAMPOLINE_cam_render_scene,
         (uint32_t)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
+    remove_hook(&hooked_cD8Renderer_Clear,
+        (uint32_t)GameInfoTable.cD8Renderer_Clear,
+        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
+        (uint32_t)&BYPASS_cD8Renderer_Clear,
+        GameInfoTable.cD8Renderer_Clear_preamble);
+    remove_hook(&hooked_dark_render_overlays,
+        (uint32_t)GameInfoTable.dark_render_overlays,
+        (uint32_t)&TRAMPOLINE_dark_render_overlays,
+        (uint32_t)&BYPASS_dark_render_overlays,
+        GameInfoTable.dark_render_overlays_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/
