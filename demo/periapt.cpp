@@ -78,6 +78,21 @@
 // QUERY: Can we hook into NewDark's .mtl rendering?
 
 // QUERY: Can NewDark's .mtl rendering do useful Z or stencil work for us?
+//
+//     No. Not a bit in there about either. Although the new property
+//     `Renderer->Render Order` will let us turn _off_ z write for a
+//     given object, that's not really what I'd want.
+//
+//     I think I'll have to keep digging into the PlayerArm() rendering
+//     (both in source and disassembly) and try to understand what I'd
+//     have to replicate in order to get a correct-animation-frame shape
+//     rendering only into the stencil.
+//
+//     Alternatively, perhaps I could hook into the object rendering and
+//     only if it's the player arm, and the periapt, then turn on stencil
+//     writes? But that would draw the entire arm and periapt into the
+//     stencil buffer! Also not good! So I need to do a bunch more work
+//     to figure out how this is going to work.
 
 #include "Script.h"
 #include "ScriptModule.h"
