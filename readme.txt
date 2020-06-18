@@ -1,19 +1,24 @@
-Object Script Module (osmdemo.zip) by Tom N Harris.
+Object Script Module (osmdemo.zip) by Tom N Harris, with modifications
+by Andrew Durdin.
 
-Small tweaks to get it building with [TDM GCC 9.2.0](https://jmeubank.github.io/tdm-gcc/articles/2020-03/9.2.0-release).
+Builds with mingw32 gcc; I'm using TDM GCC 9.2.0:
 
-Added echo.cpp, a stripped down Demo.cpp with just the Echo script.
+    https://jmeubank.github.io/tdm-gcc/articles/2020-03/9.2.0-release
 
 To build:
 
     make
-    cd demo
-    make echo.osm empty.osm Demo.osm
 
-Status:
+By default, this builds three osms:
 
-* echo.osm: builds and works ok.
+* empty.osm: a bare example with no scripts.
 
-* empty.osm: builds, but (ofc) does nothing.
+* echo.osm: an 'Echo' script that displays all messages received on screen.
 
-* Demo.osm: builds, but won't load. Don't know why.
+* demo.osm: the original demo scripts from osmdemo.zip
+
+
+KNOWN BUGS
+----------
+
+* demo.osm builds, but won't load. I don't know why.

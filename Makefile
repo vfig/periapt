@@ -1,86 +1,93 @@
-# Makefile for lg library
+###############################################################################
+##    Makefile-gcc
+##
+##    This file is part of Object Script Module
+##    Copyright (C) 2004 Tom N Harris <telliamed@whoopdedo.cjb.net>
+##
+##    Permission is hereby granted, free of charge, to any person obtaining
+##    a copy of this software and associated documentation files (the 
+##    "Software"), to deal in the Software without restriction, including 
+##    without limitation the rights to use, copy, modify, merge, publish, 
+##    distribute, sublicense, and/or sell copies of the Software, and to 
+##    permit persons to whom the Software is furnished to do so.
+##    
+##    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
+##    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES 
+##    OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-
+##    INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS 
+##    BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN 
+##    AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR 
+##    IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+##    THE SOFTWARE.
+##
+###############################################################################
+
+.PHONY: all clean
 
 .SUFFIXES:
-.SUFFIXES: .o .cpp
+.SUFFIXES: .o .cpp .rc 
+.PRECIOUS: %.o
 
 srcdir = .
 
-# This Makefile is targetted for GCC in Cygwin/Mingw32 
-# Possible command-line for Borland: -P -tWD -w-inl -w-par
+GAME = 2
 
-SH = sh
+LGDIR = liblg
 
-CC = g++
+CC = gcc
+CXX = g++
+ASM = as
 AR = ar
-# GNU ar updates the symbols automatically.
-# Set this if you need to do it yourself
-RANLIB = echo
 DLLWRAP = dllwrap
 
-DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN
-
-ARFLAGS = rc
-LDFLAGS = -mwindows -L.
-LIBS = -lstdc++ -luuid
-INCLUDEDIRS = -I. -I$(srcdir)
-# If you care for this... # -Wno-unused-variable 
-# A lot of the callbacks have unused parameters, so I turn that off.
-CXXFLAGS =  -W -Wall -Wno-unused-parameter -Wno-pmf-conversions \
-			$(INCLUDEDIRS) -masm=att \
-			-fno-pcc-struct-return -mms-bitfields -std=c++11
-LDFLAGS = -mwindows -L. -llg
-DLLFLAGS = --def script.def --add-underscore --target i386-mingw32
+DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAME=$(GAME)
 
 ifdef DEBUG
-CXXDEBUG = -g -DDEBUG 
+DEFINES := $(DEFINES) -D_DEBUG 
+ASMDEBUG =
+CXXDEBUG = -g -O0
 LDDEBUG = -g
+LGLIB = lg-d
 else
-CXXDEBUG = -O3 -DNDEBUG
+DEFINES := $(DEFINES) -DNDEBUG
+ASMDEBUG =
+CXXDEBUG = -O3 
 LDDEBUG =
+LGLIB = lg
 endif
 
-LG_LIB = liblg.a
-LG_SRCS = lg.cpp scrmsgs.cpp iids.cpp
-LG_OBJS = lg.o  scrmsgs.o iids.o
+ARFLAGS = rc
+LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base 
+LIBDIRS = -L$(LGDIR) 
+LIBS = -l$(LGLIB) -luuid -lstdc++
+INCLUDES = -I$(LGDIR)
+ASMFLAGS =
+# If you care for this... # -Wno-unused-variable 
+# A lot of the callbacks have unused parameters, so I turn that off.
+CXXFLAGS =  -W -Wall -Wno-unused-parameter \
+		-std=c++11 -masm=att \
+		-fno-pcc-struct-return -mms-bitfields
+DLLFLAGS =  --target i386-mingw32
 
-LG_LIBD = liblg-d.a
-LG_OBJSD = lg-d.o scrmsgs-d.o iids.o
+all: periapt.osm
 
 %.o: %.cpp
-	$(CC) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) -o $@ -c $<
+	$(CXX) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) $(INCLUDES) -o $@ -c $<
 
-%-d.o: %.cpp
-	$(CC) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) -o $@ -c $<
+%.o: %.s
+	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
 
+%.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
+	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
-ALL:	$(LG_LIB) $(LG_LIBD)
+periapt.o: bypass.h
+
+periapt.osm: periapt.o bypass.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
+	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+
+$(LGDIR)/lib$(LGLIB).a:
+	$(MAKE) -C $(LGDIR)
 
 clean:
-	$(RM) $(LG_OBJS)
-
-stamp:
-	$(RM) lg/stamp-*
-	$(SH) timestamp.sh lg lg $(LG_SRCS)
-
-$(LG_LIB): $(LG_OBJS)
-	$(AR) $(ARFLAGS) $@ $?
-	-@ ($(RANLIB) $@ || true) >/dev/null 2>&1
-
-$(LG_LIBD): CXXDEBUG = -g -DDEBUG
-$(LG_LIBD): LDDEBUG = -g
-$(LG_LIBD): $(LG_OBJSD)
-	$(AR) $(ARFLAGS) $@ $?
-	-@ ($(RANLIB) $@ || true) >/dev/null 2>&1
-
-dump.o: dump.cpp
-	$(CC) $(CXXFLAGS) -g -DDEBUG $(DEFINES) -o $@ -c $<
-
-dump.osm: dump.o $(LG_LIBD)
-	$(DLLWRAP) $(DLLFLAGS) -o $@ dump.o $(LDFLAGS) -g $(LIBS)
-
-
-iids.o: iids.cpp
-lg.o: lg.cpp lg/types.h lg/dynarray.h lg/dynarray.hpp
-scrmsgs.o: scrmsgs.cpp lg/scrmsgs.h
-lg-d.o: lg.cpp lg/types.h lg/dynarray.h lg/dynarray.hpp
-scrmsgs-d.o: scrmsgs.cpp lg/scrmsgs.h
+	$(RM) *.o *.osm
+	$(MAKE) -C $(LGDIR) clean
