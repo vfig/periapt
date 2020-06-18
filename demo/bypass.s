@@ -134,3 +134,24 @@ _BYPASS_dark_render_overlays:
 	test	byte ptr [_bypass_enable], 0xff		# if disabled, jmp TRAMPOLINE
 	jz	_TRAMPOLINE_dark_render_overlays	#	.
 	jmp	_HOOK_dark_render_overlays		# call HOOK
+
+
+/* ------------------------------------------------------------------------*/
+
+# void ObjPosSetLocation(obj, loc)		# Custom convention, caller cleanup:
+#	t2id obj;				# EDI
+#	t2location* loc;			# ESI
+#						# Void return.
+
+	.extern _ADDR_ObjPosSetLocation
+	.global _CALL_ObjPosSetLocation
+
+_CALL_ObjPosSetLocation:
+	push	esi				# swizzle args to custom convention
+	push	edi				#	.
+	mov	edi, dword ptr [esp+0x0c]	#	.
+	mov	esi, dword ptr [esp+0x10]	# 	.
+	call	dword ptr [_ADDR_ObjPosSetLocation]	# call original
+	pop	edi				#	.
+	pop	esi				#	,
+	ret					#	.

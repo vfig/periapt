@@ -1,3 +1,4 @@
+typedef uint32_t t2id;
 typedef float t2float;
 typedef unsigned short t2angle;
 
