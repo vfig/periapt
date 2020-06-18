@@ -1,5 +1,6 @@
-Object Script Module (osmdemo.zip) by Tom N Harris, with modifications
-by Andrew Durdin.
+Periapt Script Module: for the Thief 2 fan mission, codename 'Dual'.
+
+Based on Object Script Module (osmdemo.zip) by Tom N Harris.
 
 Builds with mingw32 gcc; I'm using TDM GCC 9.2.0:
 
@@ -9,16 +10,8 @@ To build:
 
     make
 
-By default, this builds three osms:
-
-* empty.osm: a bare example with no scripts.
-
-* echo.osm: an 'Echo' script that displays all messages received on screen.
-
-* demo.osm: the original demo scripts from osmdemo.zip
-
 
 KNOWN BUGS
 ----------
 
-* demo.osm builds, but won't load. I don't know why.
+* Too many to list! This is a work in progress.
