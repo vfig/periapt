@@ -22,7 +22,7 @@
 ##
 ###############################################################################
 
-.PHONY: all clean
+.PHONY: all install clean
 
 .SUFFIXES:
 .SUFFIXES: .o .cpp .rc 
@@ -33,12 +33,14 @@ srcdir = .
 GAME = 2
 
 LGDIR = liblg
+INSTALLDIR = e:\\dev\\T2FM\\test_osm
 
 CC = gcc
 CXX = g++
 ASM = as
 AR = ar
 DLLWRAP = dllwrap
+CP = cp
 
 DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAME=$(GAME)
 
@@ -91,3 +93,6 @@ $(LGDIR)/lib$(LGLIB).a:
 clean:
 	$(RM) *.o *.osm
 	$(MAKE) -C $(LGDIR) clean
+
+install: periapt.osm
+	$(CP) periapt.osm "$(INSTALLDIR)" && echo Installed.
