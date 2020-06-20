@@ -288,10 +288,10 @@ struct t2_modelname_vtable {
 
     DWORD reserved16;
     DWORD reserved17;
-    void __cdecl (*Set)(void* thisptr, t2id obj, const char* name);
+    void __stdcall (*Set)(void* thisptr, t2id obj, const char* name);
     DWORD reserved19;
 
-    BOOL __cdecl (*Get)(void* thisptr, t2id obj, const char** pName);
+    BOOL __stdcall (*Get)(void* thisptr, t2id obj, const char** pName);
 };
 
 const char* t2_modelname_Get(t2id obj) {
@@ -304,7 +304,8 @@ const char* t2_modelname_Get(t2id obj) {
             if (vtable->Get) {
                 const char *name = NULL;
                 if (vtable->Get(modelnameprop, obj, &name)) {
-                    strcpy(buf, name);
+                    strncpy(buf, name, 256);
+                    buf[255] = 0;
                 }
             }
         }
