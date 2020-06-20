@@ -562,6 +562,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // device->Clear(1, &viewportRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(255,0,0,255), 0, 0);
         // device->Clear(1, &periaptRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(0,255,255,255), 0, 0);
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        /* disable the 'mirror', now that there's a stenciled blackjack.
         device->Clear(1, &viewportRect, D3DCLEAR_STENCIL, 0, 0, 0);
         device->Clear(1, &periaptRect, D3DCLEAR_STENCIL, 0, 0, 1);
         // Do some really, really hacky 'rounded' corners so the
@@ -579,6 +580,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
                 device->Clear(1, &cornerRect, D3DCLEAR_STENCIL, 0, 0, 0);
             }
         }
+        */
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILREF, 0x01);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
@@ -603,13 +605,13 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         t2position originalPos = *pos;
 
         // pos->fac.y = ~pos->fac.y; // reverses the pitch, but not in a nice way.
-        pos->fac.z += T2_ANGLE_PI; // 180 degree rotation to 'behind me'.
+        // pos->fac.z += T2_ANGLE_PI; // 180 degree rotation to 'behind me'.
 
-        // // Move the camera a touch since the view is at the top of the screen.
-        // pos->loc.vec.z += 1.0; 
-        // // If we move the location, then we ought to cancel the cell+hint metadata:
-        // pos->loc.cell = -1;
-        // pos->loc.hint = -1;
+        // Move the camera into the otherworld:
+        pos->loc.vec.y += 18.0;
+        // If we move the location, then we ought to cancel the cell+hint metadata:
+        pos->loc.cell = -1;
+        pos->loc.hint = -1;
 
         // PROBLEM: this ends up calling device->Clear() again and clearing
         // the whole stencil buffer! Blargh.
@@ -673,25 +675,19 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
-    // THE FUCKING STATE OF THINGS:
-    // fuck me, now the t2_modelname_Get() call is crashing again :(
-    // gonna leave it here. tired of debugging this bullshit
-
     const char* name = t2_modelname_Get(obj);
-    printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
+    // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
 
     // FIXME.. we also only want to do this on the first pass, not our mirror pass, right?
-    bool isBlackjack = false; //(name && (stricmp(name, "bjachand") == 0));
-    IDirect3DDevice9* device = NULL; //(t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-    if (isBlackjack) {
+    // Although it probably doesn't matter there, if the viewmodel is rendered at all, it'll
+    // be after the terrain anyway. And it appears that the HUD and inventory gets its
+    // render state cleaned up.
+    bool isBlackjack = (name && (stricmp(name, "bjachand") == 0));
+    bool isSword = (name && (stricmp(name, "armsw2") == 0));
+    IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+    if (isBlackjack || isSword) {
         if (device) {
-            // Draw the blackjack into the stencil buffer.
-
-            // pass = (StencilRef & StencilMask) CompFunc (StencilBufferValue & StencilMask)
-            //
-            // NewStencilBufferValue = (StencilBufferValue & ~StencilWriteMask)
-            //                         | (StencilWriteMask & StencilOp(StencilBufferValue))
-
+            // Draw the blackjack into the stencil buffer:
             // Make sure the stencil test will always pass.
             device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
             device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
@@ -702,17 +698,11 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
             device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
             device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
             device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-
+            // Note that we don't bother resetting this state anywhere. That's probab
         }
     }
 
     ORIGINAL_rendobj_render_object(obj, clut, fragment);
-
-    if (isBlackjack) {
-        if (device) {
-            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-        }
-    }
 }
 
 // TODO: I don't think we want to hook and unhook many parts individually,
