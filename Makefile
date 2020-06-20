@@ -22,7 +22,7 @@
 ##
 ###############################################################################
 
-.PHONY: all install clean
+.PHONY: all install run clean
 
 .SUFFIXES:
 .SUFFIXES: .o .cpp .rc 
@@ -34,6 +34,8 @@ GAME = 2
 
 LGDIR = liblg
 INSTALLDIR = e:\\dev\\T2FM\\test_osm
+RUNDIR = e:\\dev\\TMA1.27
+RUN = $(RUNDIR)\\Thief2.exe
 
 CC = gcc
 CXX = g++
@@ -96,3 +98,6 @@ clean:
 
 install: periapt.osm
 	$(CP) periapt.osm "$(INSTALLDIR)" && echo Installed.
+
+run: install
+	cd "$(RUNDIR)" && "$(RUN)" -fm=test_osm
