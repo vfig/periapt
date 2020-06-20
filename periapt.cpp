@@ -261,7 +261,6 @@ ExeIdentity IdentifyExe() {
 
 // Functions to be called:
 t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
-void __cdecl (*t2_rendobj_render_object)(t2id obj, BYTE* clut, DWORD fragment);
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
 
@@ -273,10 +272,11 @@ struct GameInfo {
     DWORD cD8Renderer_Clear_preamble;
     DWORD dark_render_overlays;
     DWORD dark_render_overlays_preamble;
+    DWORD rendobj_render_object;
+    DWORD rendobj_render_object_preamble;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
-    DWORD rendobj_render_object;
     // Data to be accessed:
     DWORD d3d9device_ptr;
 };
@@ -289,9 +289,9 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001bc7a0UL, 9,    // cam_render_scene
         0x0020ce80UL, 6,    // cD8Renderer_Clear
         0, 0,               // dark_render_overlays
+        0, 0,               // rendobj_render_object
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
-        0,                  // rendobj_render_object
         0x005d8118UL,       // d3d9device_ptr
     },
     // ExeDromEd_v126
@@ -299,9 +299,9 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x00286960UL, 9,    // cam_render_scene
         0x002e62a0UL, 6,    // cD8Renderer_Clear
         0, 0,               // dark_render_overlays
+        0, 0,               // rendobj_render_object
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
-        0,                  // rendobj_render_object
         0x016e7b50UL,       // d3d9device_ptr
     },
     // ExeThief_v127
@@ -309,9 +309,9 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001bd820UL, 9,    // cam_render_scene
         0x0020dff0UL, 6,    // cD8Renderer_Clear
         0x00058330UL, 6,    // dark_render_overlays
+        0x001c2870UL, 6,    // rendobj_render_object
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
-        0,                  // rendobj_render_object
         0x005d915cUL,       // d3d9device_ptr
     },
     // ExeDromEd_v127
@@ -319,9 +319,9 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002895c0UL, 9,    // cam_render_scene
         0x002e8e60UL, 6,    // cD8Renderer_Clear
         0x00068750UL, 6,    // dark_render_overlays
+        0x00290950UL, 6,    // rendobj_render_object
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
-        0x00290950UL,       // rendobj_render_objects
         0x016ebce0UL,       // d3d9device_ptr
     },
 };
@@ -337,24 +337,23 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.cam_render_scene, base);
     fixup_addr(&GameInfoTable.cD8Renderer_Clear, base);
     fixup_addr(&GameInfoTable.dark_render_overlays, base);
+    fixup_addr(&GameInfoTable.rendobj_render_object, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
-    fixup_addr(&GameInfoTable.rendobj_render_object, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
-    t2_rendobj_render_object = (void(*)(t2id,BYTE*,DWORD))GameInfoTable.rendobj_render_object;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
     printf("periapt: cD8Renderer_Clear = %08x\n", (unsigned int)GameInfoTable.cD8Renderer_Clear);
     printf("periapt: dark_render_overlays = %08x\n", (unsigned int)GameInfoTable.dark_render_overlays);
+    printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
-    printf("periapt: t2_rendobj_render_object = %08x\n", (unsigned int)t2_rendobj_render_object);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
 #endif
 }
@@ -592,6 +591,7 @@ extern "C"
 void __cdecl HOOK_dark_render_overlays(void) {
     ORIGINAL_dark_render_overlays();
 
+/*
     // Okay, now we want to render an object! How about, um, id... 16? That's the stone head!
     // We'll move it to 0,0,0 and back again!
     t2id obj = 16;
@@ -607,10 +607,17 @@ void __cdecl HOOK_dark_render_overlays(void) {
         // FIXME: here
         // Okay, so this doesn't seem to be rendering anything at all?
         // Or if it is, _I_ can't see it! Phooey!
-        t2_rendobj_render_object(obj, NULL, 0);
+        ORIGINAL_rendobj_render_object(obj, NULL, 0);
         CALL_ObjPosSetLocation(obj, &pos.loc);
         spew_obj_location(obj, "Returned");
     }
+*/
+}
+
+extern "C"
+void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
+    printf("rendobj_render_object(%d)\n", obj);
+    ORIGINAL_rendobj_render_object(obj, clut, fragment);
 }
 
 // TODO: I don't think we want to hook and unhook many parts individually,
@@ -618,6 +625,7 @@ void __cdecl HOOK_dark_render_overlays(void) {
 bool hooked_cam_render_scene;
 bool hooked_cD8Renderer_Clear;
 bool hooked_dark_render_overlays;
+bool hooked_rendobj_render_object;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -638,6 +646,12 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_dark_render_overlays,
         (uint32_t)&BYPASS_dark_render_overlays,
         GameInfoTable.dark_render_overlays_preamble);
+    hooks_spew("Hooking rendobj_render_object...\n");
+    install_hook(&hooked_rendobj_render_object,
+        (uint32_t)GameInfoTable.rendobj_render_object,
+        (uint32_t)&TRAMPOLINE_rendobj_render_object,
+        (uint32_t)&BYPASS_rendobj_render_object,
+        GameInfoTable.rendobj_render_object_preamble);
 }
 
 void remove_all_hooks() {
@@ -659,6 +673,12 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_dark_render_overlays,
         (uint32_t)&BYPASS_dark_render_overlays,
         GameInfoTable.dark_render_overlays_preamble);
+    hooks_spew("Unhooking rendobj_render_object...\n");
+    remove_hook(&hooked_rendobj_render_object,
+        (uint32_t)GameInfoTable.rendobj_render_object,
+        (uint32_t)&TRAMPOLINE_rendobj_render_object,
+        (uint32_t)&BYPASS_rendobj_render_object,
+        GameInfoTable.rendobj_render_object_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/

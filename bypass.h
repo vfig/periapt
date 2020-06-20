@@ -17,6 +17,11 @@ extern void __cdecl ORIGINAL_dark_render_overlays(void);
 extern const uint32_t BYPASS_dark_render_overlays;
 extern const uint32_t TRAMPOLINE_dark_render_overlays;
 
+void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment);
+extern void __cdecl ORIGINAL_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment);
+extern const uint32_t BYPASS_rendobj_render_object;
+extern const uint32_t TRAMPOLINE_rendobj_render_object;
+
 uint32_t ADDR_ObjPosSetLocation;
 extern void __cdecl CALL_ObjPosSetLocation(t2id obj, t2location* loc);
 

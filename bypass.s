@@ -138,6 +138,32 @@ _BYPASS_dark_render_overlays:
 
 /* ------------------------------------------------------------------------*/
 
+# void rendobj_render_object(obj,clut,fragment)	# __cdecl
+#	t2id obj;				# Object to render.
+#	uchar* clut;				# Color LUT; may be null.
+#	ulong fragment;				# Object fragment; should always be 0 with HW renderer.
+#						# Void return.
+
+	.extern _HOOK_rendobj_render_object
+	.global _BYPASS_rendobj_render_object
+	.global _ORIGINAL_rendobj_render_object
+	.global _TRAMPOLINE_rendobj_render_object
+
+_TRAMPOLINE_rendobj_render_object:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_rendobj_render_object:
+	jmp	_TRAMPOLINE_rendobj_render_object	# call TRAMPOLINE
+
+_BYPASS_rendobj_render_object:
+	test	byte ptr [_bypass_enable], 0xff		# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_rendobj_render_object	#	.
+	jmp	_HOOK_rendobj_render_object		# call HOOK
+
+
+/* ------------------------------------------------------------------------*/
+
 # void ObjPosSetLocation(obj, loc)		# Custom convention, caller cleanup:
 #	t2id obj;				# EDI
 #	t2location* loc;			# ESI
