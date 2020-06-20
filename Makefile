@@ -75,10 +75,10 @@ DLLFLAGS =  --target i386-mingw32
 
 all: periapt.osm
 
-%.o: %.cpp
+%.o: %.cpp Makefile
 	$(CXX) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) $(INCLUDES) -o $@ -c $<
 
-%.o: %.s
+%.o: %.s Makefile
 	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
 
 %.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
