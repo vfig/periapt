@@ -263,6 +263,51 @@ ExeIdentity IdentifyExe() {
 t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
+void *t2_modelnameprop_ptr;
+
+struct t2_modelname_vtable {
+    DWORD reserved0;
+    DWORD reserved1;
+    DWORD reserved2;
+    DWORD reserved3;
+
+    DWORD reserved4;
+    DWORD reserved5;
+    DWORD reserved6;
+    DWORD reserved7;
+
+    DWORD reserved8;
+    DWORD reserved9;
+    DWORD reserved10;
+    DWORD reserved11;
+
+    DWORD reserved12;
+    DWORD reserved13;
+    DWORD reserved14;
+    DWORD reserved15;
+
+    DWORD reserved16;
+    DWORD reserved17;
+    void __cdecl (*Set)(void* thisptr, t2id obj, const char* name);
+    DWORD reserved19;
+
+    void __cdecl (*Get)(void* thisptr, t2id obj, const char** pName);
+};
+
+const char* t2_modelname_Get(t2id obj) {
+    if (t2_modelnameprop_ptr) {
+        void* modelnameprop = *(void**)t2_modelnameprop_ptr;
+        t2_modelname_vtable *vtable = *(t2_modelname_vtable**)modelnameprop;
+        if (vtable) {
+            if (vtable->Get) {
+                const char *name = NULL;
+                vtable->Get(modelnameprop, obj, &name);
+                return name;
+            }
+        }
+    }
+    return NULL;
+}
 
 struct GameInfo {
     // Functions to be hooked:
@@ -279,6 +324,7 @@ struct GameInfo {
     DWORD ObjPosSetLocation;
     // Data to be accessed:
     DWORD d3d9device_ptr;
+    DWORD modelnameprop;
 };
 
 static GameInfo GameInfoTable = {};
@@ -293,6 +339,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
+        0,                  // modelnameprop
     },
     // ExeDromEd_v126
     {
@@ -303,6 +350,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
+        0,                  // modelnameprop
     },
     // ExeThief_v127
     {
@@ -313,6 +361,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
+        0x005ce4d8UL,       // modelnameprop
     },
     // ExeDromEd_v127
     {
@@ -323,6 +372,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
+        0x016e0f84UL,       // modelnameprop
     },
 };
 
@@ -341,10 +391,12 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
+    fixup_addr(&GameInfoTable.modelnameprop, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
+    t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -355,6 +407,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
+    printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
 #endif
 }
 
@@ -616,7 +669,8 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
-    printf("rendobj_render_object(%d)\n", obj);
+    const char* name = t2_modelname_Get(obj);
+    printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
     ORIGINAL_rendobj_render_object(obj, clut, fragment);
 }
 
