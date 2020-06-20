@@ -291,22 +291,25 @@ struct t2_modelname_vtable {
     void __cdecl (*Set)(void* thisptr, t2id obj, const char* name);
     DWORD reserved19;
 
-    void __cdecl (*Get)(void* thisptr, t2id obj, const char** pName);
+    BOOL __cdecl (*Get)(void* thisptr, t2id obj, const char** pName);
 };
 
 const char* t2_modelname_Get(t2id obj) {
+    static char buf[256];
+    buf[0] = 0;
     if (t2_modelnameprop_ptr) {
         void* modelnameprop = *(void**)t2_modelnameprop_ptr;
         t2_modelname_vtable *vtable = *(t2_modelname_vtable**)modelnameprop;
         if (vtable) {
             if (vtable->Get) {
                 const char *name = NULL;
-                vtable->Get(modelnameprop, obj, &name);
-                return name;
+                if (vtable->Get(modelnameprop, obj, &name)) {
+                    strcpy(buf, name);
+                }
             }
         }
     }
-    return NULL;
+    return buf;
 }
 
 struct GameInfo {
@@ -669,9 +672,46 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
+    // THE FUCKING STATE OF THINGS:
+    // fuck me, now the t2_modelname_Get() call is crashing again :(
+    // gonna leave it here. tired of debugging this bullshit
+
     const char* name = t2_modelname_Get(obj);
     printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
+
+    // FIXME.. we also only want to do this on the first pass, not our mirror pass, right?
+    bool isBlackjack = false; //(name && (stricmp(name, "bjachand") == 0));
+    IDirect3DDevice9* device = NULL; //(t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+    if (isBlackjack) {
+        if (device) {
+            // Draw the blackjack into the stencil buffer.
+
+            // pass = (StencilRef & StencilMask) CompFunc (StencilBufferValue & StencilMask)
+            //
+            // NewStencilBufferValue = (StencilBufferValue & ~StencilWriteMask)
+            //                         | (StencilWriteMask & StencilOp(StencilBufferValue))
+
+            // Make sure the stencil test will always pass.
+            device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+            device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+            device->SetRenderState(D3DRS_STENCILREF, 0x1);
+            device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+            device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+            // If the z test and stencil tests pass, write the ref into the stencil.
+            device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+            device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+
+        }
+    }
+
     ORIGINAL_rendobj_render_object(obj, clut, fragment);
+
+    if (isBlackjack) {
+        if (device) {
+            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        }
+    }
 }
 
 // TODO: I don't think we want to hook and unhook many parts individually,
