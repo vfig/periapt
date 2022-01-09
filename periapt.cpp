@@ -327,6 +327,9 @@ struct GameInfo {
     DWORD rendobj_render_object_preamble;
     DWORD explore_portals;
     DWORD explore_portals_preamble;
+    DWORD initialize_first_region_clip;
+    DWORD initialize_first_region_clip_preamble;
+    DWORD initialize_first_region_clip_resume;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
@@ -346,11 +349,14 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // dark_render_overlays
         0, 0, /* TODO */    // rendobj_render_object
         0, 0, /* TODO */    // explore_portals
+        0, 0, /* TODO */    // initialize_first_region_clip
+        0,                  // initialize_first_region_clip_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
+
     },
     // ExeDromEd_v126
     {
@@ -359,6 +365,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // dark_render_overlays
         0, 0, /* TODO */    // rendobj_render_object
         0, 0, /* TODO */    // explore_portals
+        0, 0, /* TODO */    // initialize_first_region_clip
+        0,                  // initialize_first_region_clip_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
@@ -372,6 +380,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x00058330UL, 6,    // dark_render_overlays
         0x001c2870UL, 6,    // rendobj_render_object
         0x000cc0f0UL, 6,    // explore_portals
+        0x000cda79UL, 5,    // initialize_first_region_clip
+        0x000cda9eUL,       // initialize_first_region_clip_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
@@ -385,6 +395,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x00068750UL, 6,    // dark_render_overlays
         0x00290950UL, 6,    // rendobj_render_object
         0x001501e0UL, 6,    // explore_portals
+        0x00151d09UL, 5,    // initialize_first_region_clip
+        0x00151d2eUL,       // initialize_first_region_clip_resume
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
@@ -406,6 +418,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.dark_render_overlays, base);
     fixup_addr(&GameInfoTable.rendobj_render_object, base);
     fixup_addr(&GameInfoTable.explore_portals, base);
+    fixup_addr(&GameInfoTable.initialize_first_region_clip, base);
+    fixup_addr(&GameInfoTable.initialize_first_region_clip_resume, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
@@ -417,6 +431,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
+    RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -424,12 +439,14 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: dark_render_overlays = %08x\n", (unsigned int)GameInfoTable.dark_render_overlays);
     printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
     printf("periapt: explore_portals = %08x\n", (unsigned int)GameInfoTable.explore_portals);
+    printf("periapt: initialize_first_region_clip = %08x\n", (unsigned int)GameInfoTable.initialize_first_region_clip);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
     printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
+    printf("periapt: RESUME_initialize_first_region_clip = %08x\n", (unsigned int)RESUME_initialize_first_region_clip);
 #endif
 }
 
@@ -518,6 +535,7 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     }
 }
 
+static bool second_pass_render;
 static bool prevent_target_stencil_clear;
 
 extern "C"
@@ -639,7 +657,9 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // Calling this again might have undesirable side effects; needs research.
         // Although right now I'm not seeing frobbiness being affected... not a
         // very conclusive test ofc.
+        second_pass_render = true;
         ORIGINAL_cam_render_scene(pos, zoom);
+        second_pass_render = false;
 
         *pos = originalPos;
 
@@ -756,6 +776,28 @@ void __cdecl HOOK_explore_portals(t2portalcell* cell) {
     ORIGINAL_explore_portals(cell);
 }
 
+extern "C"
+void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
+    int l=0, r=w, t=0, b=h;
+    if (second_pass_render) {
+        // Adjust the portal clipping rectangle for the second render pass.
+        // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
+        // but for the second pass we want to only include portals that would
+        // be rendered in the periapt viewmodel.
+        //
+        // For now, let's just say "draw the right half of the screen only":
+        l = w/2;
+    }
+    clip->l = l<<16;
+    clip->t = t<<16;
+    clip->r = r<<16;
+    clip->b = b<<16;
+    clip->tl = clip->l + clip->t;
+    clip->tr = clip->r - clip->t;
+    clip->bl = clip->l - clip->b;
+    clip->br = clip->r + clip->b;
+}
+
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
@@ -763,6 +805,7 @@ bool hooked_cD8Renderer_Clear;
 bool hooked_dark_render_overlays;
 bool hooked_rendobj_render_object;
 bool hooked_explore_portals;
+bool hooked_initialize_first_region_clip;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -795,6 +838,12 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_explore_portals,
         (uint32_t)&BYPASS_explore_portals,
         GameInfoTable.explore_portals_preamble);
+    hooks_spew("Hooking initialize_first_region_clip...\n");
+    install_hook(&hooked_initialize_first_region_clip,
+        (uint32_t)GameInfoTable.initialize_first_region_clip,
+        (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
+        (uint32_t)&BYPASS_initialize_first_region_clip,
+        GameInfoTable.initialize_first_region_clip_preamble);
 }
 
 void remove_all_hooks() {
@@ -828,6 +877,12 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_explore_portals,
         (uint32_t)&BYPASS_explore_portals,
         GameInfoTable.explore_portals_preamble);
+    hooks_spew("Unhooking initialize_first_region_clip...\n");
+    remove_hook(&hooked_initialize_first_region_clip,
+        (uint32_t)GameInfoTable.initialize_first_region_clip,
+        (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
+        (uint32_t)&BYPASS_initialize_first_region_clip,
+        GameInfoTable.initialize_first_region_clip_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/

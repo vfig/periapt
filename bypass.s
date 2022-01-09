@@ -41,9 +41,13 @@ To uninstall:
 	.data
 
 	.global _bypass_enable
+	.global _RESUME_initialize_first_region_clip
 
 _bypass_enable:
 	.byte 0x00
+
+_RESUME_initialize_first_region_clip:
+	.space	4, 0x00				# resume address
 
 /* ------------------------------------------------------------------------*/
 
@@ -210,3 +214,38 @@ _BYPASS_explore_portals:
 	add	sp, 4				# cleanup
 	ret					#	.
 
+
+/* ------------------------------------------------------------------------*/
+
+# in initialize_first_region_clip...		# in media res:
+#	int w;					# ECX
+#	int h;					# EBP
+#	t2clipdata *clip;			# EAX
+
+	.extern _HOOK_initialize_first_region_clip
+	.global _BYPASS_initialize_first_region_clip
+	.global _ORIGINAL_initialize_first_region_clip
+	.global _TRAMPOLINE_initialize_first_region_clip
+
+_TRAMPOLINE_initialize_first_region_clip:
+	.space	5, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_initialize_first_region_clip:
+	int	3				# doesn't make sense!
+
+_BYPASS_initialize_first_region_clip:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_initialize_first_region_clip	#	.
+	push	eax				# preserve registers
+	push	ecx				#	.
+	push	edx				#	.
+	push	eax				# param 2: t2clipdata*
+	push	ebp				# param 1: height
+	push	ecx				# param 0: width
+	call	_HOOK_initialize_first_region_clip # call HOOK
+	add	sp, 12				# cleanup
+	pop	edx				# restore registers
+	pop	ecx				#	.
+	pop	eax				#	.
+	jmp	dword ptr [_RESUME_initialize_first_region_clip]

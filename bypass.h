@@ -30,4 +30,9 @@ extern void __cdecl ORIGINAL_explore_portals(t2portalcell *cell);
 extern const uint32_t BYPASS_explore_portals;
 extern const uint32_t TRAMPOLINE_explore_portals;
 
+void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip);
+extern const uint32_t BYPASS_initialize_first_region_clip;
+extern const uint32_t TRAMPOLINE_initialize_first_region_clip;
+extern uint32_t RESUME_initialize_first_region_clip;
+
 }

@@ -31,3 +31,8 @@ typedef struct t2portalcell {
     t2vector sphere_center;
     t2float sphere_radius;
 } t2portalcell;
+
+typedef struct t2clipdata {
+    int l,r,t,b;
+    int tl,tr,bl,br;
+};
