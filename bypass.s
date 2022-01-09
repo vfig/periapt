@@ -181,3 +181,32 @@ _CALL_ObjPosSetLocation:
 	pop	edi				#	.
 	pop	esi				#	,
 	ret					#	.
+
+/* ------------------------------------------------------------------------*/
+
+# void explore_portals(cell)			# Custom convention, caller cleanup:
+#	t2portalcell* cell;			# ESI
+#						# Void return.
+
+	.extern _HOOK_explore_portals
+	.global _BYPASS_explore_portals
+	.global _ORIGINAL_explore_portals
+	.global _TRAMPOLINE_explore_portals
+
+_TRAMPOLINE_explore_portals:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_explore_portals:
+	mov	esi, dword ptr [esp+4]		# swizzle args to custom convention
+	call	_TRAMPOLINE_explore_portals	# call TRAMPOLINE
+	ret					#	.
+
+_BYPASS_explore_portals:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_explore_portals	#	.
+	push	esi				# swizzle args to __cdecl convention
+	call	_HOOK_explore_portals		# call HOOK
+	add	sp, 4				# cleanup
+	ret					#	.
+

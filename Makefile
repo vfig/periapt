@@ -33,7 +33,7 @@ srcdir = .
 GAME = 2
 
 LGDIR = liblg
-INSTALLDIR = e:\\dev\\T2FM\\test_osm
+INSTALLDIR = e:\\dev\\thief\\T2FM\\Dual
 RUNDIR = e:\\dev\\TMA1.27
 RUN = $(RUNDIR)\\Thief2.exe
 

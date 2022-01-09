@@ -103,6 +103,7 @@
 
 #include <lg/scrservices.h>
 
+#include <cmath>
 #include <cstring>
 #include <new>
 #include <exception>
@@ -264,6 +265,7 @@ t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
+t2vector *t2_portal_camera_loc_ptr;
 
 struct t2_modelname_vtable {
     DWORD reserved0;
@@ -323,12 +325,15 @@ struct GameInfo {
     DWORD dark_render_overlays_preamble;
     DWORD rendobj_render_object;
     DWORD rendobj_render_object_preamble;
+    DWORD explore_portals;
+    DWORD explore_portals_preamble;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
     // Data to be accessed:
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
+    DWORD portal_camera_loc;
 };
 
 static GameInfo GameInfoTable = {};
@@ -338,23 +343,27 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
     {
         0x001bc7a0UL, 9,    // cam_render_scene
         0x0020ce80UL, 6,    // cD8Renderer_Clear
-        0, 0,               // dark_render_overlays
-        0, 0,               // rendobj_render_object
+        0, 0, /* TODO */    // dark_render_overlays
+        0, 0, /* TODO */    // rendobj_render_object
+        0, 0, /* TODO */    // explore_portals
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
+        0,                  // portal_camera_loc
     },
     // ExeDromEd_v126
     {
         0x00286960UL, 9,    // cam_render_scene
         0x002e62a0UL, 6,    // cD8Renderer_Clear
-        0, 0,               // dark_render_overlays
-        0, 0,               // rendobj_render_object
+        0, 0, /* TODO */    // dark_render_overlays
+        0, 0, /* TODO */    // rendobj_render_object
+        0, 0, /* TODO */    // explore_portals
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
+        0,                  // portal_camera_loc
     },
     // ExeThief_v127
     {
@@ -362,10 +371,12 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x0020dff0UL, 6,    // cD8Renderer_Clear
         0x00058330UL, 6,    // dark_render_overlays
         0x001c2870UL, 6,    // rendobj_render_object
+        0x000cc0f0UL, 6,    // explore_portals
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
+        0x00819ac0UL,       // portal_camera_loc
     },
     // ExeDromEd_v127
     {
@@ -373,10 +384,12 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002e8e60UL, 6,    // cD8Renderer_Clear
         0x00068750UL, 6,    // dark_render_overlays
         0x00290950UL, 6,    // rendobj_render_object
+        0x001501e0UL, 6,    // explore_portals
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
+        0x01995dc0UL,       // portal_camera_loc
     },
 };
 
@@ -392,26 +405,31 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.cD8Renderer_Clear, base);
     fixup_addr(&GameInfoTable.dark_render_overlays, base);
     fixup_addr(&GameInfoTable.rendobj_render_object, base);
+    fixup_addr(&GameInfoTable.explore_portals, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
+    fixup_addr(&GameInfoTable.portal_camera_loc, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
+    t2_portal_camera_loc_ptr = (t2vector*)GameInfoTable.portal_camera_loc;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
     printf("periapt: cD8Renderer_Clear = %08x\n", (unsigned int)GameInfoTable.cD8Renderer_Clear);
     printf("periapt: dark_render_overlays = %08x\n", (unsigned int)GameInfoTable.dark_render_overlays);
     printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
+    printf("periapt: explore_portals = %08x\n", (unsigned int)GameInfoTable.explore_portals);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
+    printf("periapt: t2_portal_camera_loc_ptr = %08x\n", (unsigned int)t2_portal_camera_loc_ptr);
 #endif
 }
 
@@ -707,12 +725,36 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     ORIGINAL_rendobj_render_object(obj, clut, fragment);
 }
 
+extern "C"
+void __cdecl HOOK_explore_portals(t2portalcell* cell) {
+    // Skip rendering far portals (that should be fogged out):
+    float dx = t2_portal_camera_loc_ptr->x - cell->sphere_center.x;
+    float dy = t2_portal_camera_loc_ptr->y - cell->sphere_center.y;
+    float dz = t2_portal_camera_loc_ptr->z - cell->sphere_center.z;
+    // Because fog distance is effectively further in the corners of the
+    // view frustum, scale the distance up by 1.61 (assumes 16:9)
+    float cell_center_dist = sqrtf(dx*dx+dy*dy+dz*dz);
+    float cell_near_dist = cell_center_dist - cell->sphere_radius;
+    float max_render_dist = 192.0f*1.61f;
+    if (cell_near_dist > max_render_dist) return;
+
+    // TODO: can improve on the above. Firstly, by using the whole _location_
+    //       from 'adjusted', which has facing info as well; then dotting the
+    //       cell's approximate-near-point vector against the camera facing
+    //       vector, so that central cells get clipped nearer (just as fog
+
+
+
+    ORIGINAL_explore_portals(cell);
+}
+
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
 bool hooked_cD8Renderer_Clear;
 bool hooked_dark_render_overlays;
 bool hooked_rendobj_render_object;
+bool hooked_explore_portals;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -739,6 +781,12 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_rendobj_render_object,
         (uint32_t)&BYPASS_rendobj_render_object,
         GameInfoTable.rendobj_render_object_preamble);
+    hooks_spew("Hooking explore_portals...\n");
+    install_hook(&hooked_explore_portals,
+        (uint32_t)GameInfoTable.explore_portals,
+        (uint32_t)&TRAMPOLINE_explore_portals,
+        (uint32_t)&BYPASS_explore_portals,
+        GameInfoTable.explore_portals_preamble);
 }
 
 void remove_all_hooks() {
@@ -766,6 +814,12 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_rendobj_render_object,
         (uint32_t)&BYPASS_rendobj_render_object,
         GameInfoTable.rendobj_render_object_preamble);
+    hooks_spew("Unhooking explore_portals...\n");
+    remove_hook(&hooked_explore_portals,
+        (uint32_t)GameInfoTable.explore_portals,
+        (uint32_t)&TRAMPOLINE_explore_portals,
+        (uint32_t)&BYPASS_explore_portals,
+        GameInfoTable.explore_portals_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/

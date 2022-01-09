@@ -23,3 +23,11 @@ typedef struct t2position {
    t2location loc;
    t2facing fac;
 } t2position;
+
+typedef struct t2portalcell {
+    unsigned char unknown0[6];
+    unsigned char flags;
+    unsigned char unknown1[61];
+    t2vector sphere_center;
+    t2float sphere_radius;
+} t2portalcell;
