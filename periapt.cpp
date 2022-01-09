@@ -265,7 +265,7 @@ t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
-t2vector *t2_portal_camera_loc_ptr;
+t2position *t2_portal_camera_pos_ptr;
 
 struct t2_modelname_vtable {
     DWORD reserved0;
@@ -333,7 +333,7 @@ struct GameInfo {
     // Data to be accessed:
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
-    DWORD portal_camera_loc;
+    DWORD portal_camera_pos;
 };
 
 static GameInfo GameInfoTable = {};
@@ -350,7 +350,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
-        0,                  // portal_camera_loc
+        0,                  // portal_camera_pos
     },
     // ExeDromEd_v126
     {
@@ -363,7 +363,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
-        0,                  // portal_camera_loc
+        0,                  // portal_camera_pos
     },
     // ExeThief_v127
     {
@@ -376,7 +376,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
-        0x00819ac0UL,       // portal_camera_loc
+        0x00460bf0UL,       // portal_camera_pos
     },
     // ExeDromEd_v127
     {
@@ -389,7 +389,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
-        0x01995dc0UL,       // portal_camera_loc
+        0x0140216cUL,       // portal_camera_pos
     },
 };
 
@@ -410,13 +410,13 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
-    fixup_addr(&GameInfoTable.portal_camera_loc, base);
+    fixup_addr(&GameInfoTable.portal_camera_pos, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
-    t2_portal_camera_loc_ptr = (t2vector*)GameInfoTable.portal_camera_loc;
+    t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -429,7 +429,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
-    printf("periapt: t2_portal_camera_loc_ptr = %08x\n", (unsigned int)t2_portal_camera_loc_ptr);
+    printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
 #endif
 }
 
@@ -728,22 +728,30 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
 extern "C"
 void __cdecl HOOK_explore_portals(t2portalcell* cell) {
     // Skip rendering far portals (that should be fogged out):
-    float dx = t2_portal_camera_loc_ptr->x - cell->sphere_center.x;
-    float dy = t2_portal_camera_loc_ptr->y - cell->sphere_center.y;
-    float dz = t2_portal_camera_loc_ptr->z - cell->sphere_center.z;
-    // Because fog distance is effectively further in the corners of the
-    // view frustum, scale the distance up by 1.61 (assumes 16:9)
-    float cell_center_dist = sqrtf(dx*dx+dy*dy+dz*dz);
-    float cell_near_dist = cell_center_dist - cell->sphere_radius;
-    float max_render_dist = 192.0f*1.61f;
+
+    // Get the camera position and facing.
+    t2position pos = *t2_portal_camera_pos_ptr;
+    // Build the camera's forward unit vector from its facing.
+    float yaw = pos.fac.z*3.1416f/32768.0f;
+    float pitch = -pos.fac.y*3.1416f/32768.0f;
+    t2vector look;
+    look.x = cos(yaw)*cos(pitch);
+    look.y = sin(yaw)*cos(pitch);
+    look.z = sin(pitch);
+    // Get a vector from the camera position to the center of
+    // the cell's bounding sphere.
+    t2vector center;
+    center.x = cell->sphere_center.x - pos.loc.vec.x;
+    center.y = cell->sphere_center.y - pos.loc.vec.y;
+    center.z = cell->sphere_center.z - pos.loc.vec.z;
+    // Find the distance (parallel to the forward vector) to the
+    // cell's center, by projecting the center vector onto the
+    // forward vector.
+    float dot = center.x*look.x + center.y*look.y + center.z*look.z;
+    // Find the distance to the near edge of the cell's bounding sphere.
+    float cell_near_dist = dot - cell->sphere_radius;
+    float max_render_dist = 192.0f; // TODO: get this from fog settings?
     if (cell_near_dist > max_render_dist) return;
-
-    // TODO: can improve on the above. Firstly, by using the whole _location_
-    //       from 'adjusted', which has facing info as well; then dotting the
-    //       cell's approximate-near-point vector against the camera facing
-    //       vector, so that central cells get clipped nearer (just as fog
-
-
 
     ORIGINAL_explore_portals(cell);
 }
