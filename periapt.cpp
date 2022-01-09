@@ -608,7 +608,9 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // pos->fac.z += T2_ANGLE_PI; // 180 degree rotation to 'behind me'.
 
         // Move the camera into the otherworld:
-        pos->loc.vec.y += 18.0;
+        pos->loc.vec.x += -512.0;
+        pos->loc.vec.y += -64.0;
+        pos->loc.vec.z += 512.0;
         // If we move the location, then we ought to cancel the cell+hint metadata:
         pos->loc.cell = -1;
         pos->loc.hint = -1;
