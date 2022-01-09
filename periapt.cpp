@@ -957,7 +957,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             RECT rect;
             GetWindowRect(hwnd, &rect);
             int left = 1930;
-            int top = 480;
+            int top = 10;
             int width = (int)(rect.right - rect.left);
             int height = (int)(rect.bottom - rect.top);
             MoveWindow(hwnd, left, top, width, height, TRUE);
