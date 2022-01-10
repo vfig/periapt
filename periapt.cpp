@@ -260,6 +260,18 @@ ExeIdentity IdentifyExe() {
 
 /*** Game info ***/
 
+// Periapt properties:
+// TODO: on BeginScript(), load these with GetData();
+//       when setting them, save them with SetData();
+static struct {
+    bool dualRender;
+    t2vector dualOffset;
+    bool dualCull;
+    float dualCullLeft, dualCullTop, dualCullRight, dualCullBottom;
+    bool depthCull;
+    float depthCullDistance;
+} g_Periapt = { };
+
 // Functions to be called:
 t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 // Data to be accessed:
@@ -535,13 +547,14 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     }
 }
 
-static bool second_pass_render;
-static bool prevent_target_stencil_clear;
+static bool g_isDualRendering = false;
+static bool g_dontClearStencil = false;
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     // Render the scene normally.
     ORIGINAL_cam_render_scene(pos, zoom);
+    if (!g_Periapt.dualRender) return;
 
 #if HOOKS_SPEW
     static bool spewed = false;
@@ -553,7 +566,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 #endif
 
     if (t2_d3d9device_ptr) {
-        // Render an SS1-style rear-view mirror.
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
@@ -561,6 +573,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 #define USE_SCISSOR 0
 #define USE_STENCIL 1
 #if USE_SCISSOR
+        // Render an SS1-style rear-view mirror.
         // rear-view mirror will be the top third (horizontally) and
         // quarter (vertically) of the screen.
         RECT rect = {
@@ -629,7 +642,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // before drawing. We want to keep the previous scene render, so we
         // prevent clearing the target. And we want to keep what we've just
         // put in the stencil, so we prevent clearing the stencil too.
-        prevent_target_stencil_clear = true;
+        g_dontClearStencil = true;
 #endif // USE_STENCIL
 
         // And render the reverse view.
@@ -640,13 +653,10 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // It might not matter--I don't know--but safer not to risk it.
         t2position originalPos = *pos;
 
-        // pos->fac.y = ~pos->fac.y; // reverses the pitch, but not in a nice way.
-        // pos->fac.z += T2_ANGLE_PI; // 180 degree rotation to 'behind me'.
-
         // Move the camera into the otherworld:
-        pos->loc.vec.x += -512.0;
-        pos->loc.vec.y += -64.0;
-        pos->loc.vec.z += 512.0;
+        pos->loc.vec.x += g_Periapt.dualOffset.x;
+        pos->loc.vec.y += g_Periapt.dualOffset.y;
+        pos->loc.vec.z += g_Periapt.dualOffset.z;
         // If we move the location, then we ought to cancel the cell+hint metadata:
         pos->loc.cell = -1;
         pos->loc.hint = -1;
@@ -657,14 +667,14 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // Calling this again might have undesirable side effects; needs research.
         // Although right now I'm not seeing frobbiness being affected... not a
         // very conclusive test ofc.
-        second_pass_render = true;
+        g_isDualRendering = true;
         ORIGINAL_cam_render_scene(pos, zoom);
-        second_pass_render = false;
+        g_isDualRendering = false;
 
         *pos = originalPos;
 
 #if USE_STENCIL
-        prevent_target_stencil_clear = false;
+        g_dontClearStencil = false;
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
 #endif
 #if USE_SCISSOR
@@ -675,7 +685,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
 extern "C"
 void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) {
-    if (prevent_target_stencil_clear) {
+    if (g_dontClearStencil) {
         Flags &= ~(D3DCLEAR_TARGET | D3DCLEAR_STENCIL);
     }
     ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
@@ -715,30 +725,32 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
-    const char* name = t2_modelname_Get(obj);
-    // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
+    if (g_Periapt.dualRender) {
+        const char* name = t2_modelname_Get(obj);
+        // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
 
-    // FIXME.. we also only want to do this on the first pass, not our mirror pass, right?
-    // Although it probably doesn't matter there, if the viewmodel is rendered at all, it'll
-    // be after the terrain anyway. And it appears that the HUD and inventory gets its
-    // render state cleaned up.
-    bool isBlackjack = (name && (stricmp(name, "bjachand") == 0));
-    bool isSword = (name && (stricmp(name, "armsw2") == 0));
-    IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-    if (isBlackjack || isSword) {
-        if (device) {
-            // Draw the blackjack into the stencil buffer:
-            // Make sure the stencil test will always pass.
-            device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-            device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-            device->SetRenderState(D3DRS_STENCILREF, 0x1);
-            device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-            device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-            // If the z test and stencil tests pass, write the ref into the stencil.
-            device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-            device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-            // Note that we don't bother resetting this state anywhere. That's probab
+        // FIXME.. we also only want to do this on the first pass, not our mirror pass, right?
+        // Although it probably doesn't matter there, if the viewmodel is rendered at all, it'll
+        // be after the terrain anyway. And it appears that the HUD and inventory gets its
+        // render state cleaned up.
+        bool isBlackjack = (name && (stricmp(name, "bjachand") == 0));
+        bool isSword = (name && (stricmp(name, "armsw2") == 0));
+        IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+        if (isBlackjack || isSword) {
+            if (device) {
+                // Draw the blackjack into the stencil buffer:
+                // Make sure the stencil test will always pass.
+                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+                device->SetRenderState(D3DRS_STENCILREF, 0x1);
+                device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+                // If the z test and stencil tests pass, write the ref into the stencil.
+                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+                // Note that we don't bother resetting this state anywhere. That's probab
+            }
         }
     }
 
@@ -747,31 +759,32 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
 
 extern "C"
 void __cdecl HOOK_explore_portals(t2portalcell* cell) {
-    // Skip rendering far portals (that should be fogged out):
+    if (g_Periapt.depthCull) {
+        // Skip rendering far portals (that should be fogged out):
 
-    // Get the camera position and facing.
-    t2position pos = *t2_portal_camera_pos_ptr;
-    // Build the camera's forward unit vector from its facing.
-    float yaw = pos.fac.z*3.1416f/32768.0f;
-    float pitch = -pos.fac.y*3.1416f/32768.0f;
-    t2vector look;
-    look.x = cos(yaw)*cos(pitch);
-    look.y = sin(yaw)*cos(pitch);
-    look.z = sin(pitch);
-    // Get a vector from the camera position to the center of
-    // the cell's bounding sphere.
-    t2vector center;
-    center.x = cell->sphere_center.x - pos.loc.vec.x;
-    center.y = cell->sphere_center.y - pos.loc.vec.y;
-    center.z = cell->sphere_center.z - pos.loc.vec.z;
-    // Find the distance (parallel to the forward vector) to the
-    // cell's center, by projecting the center vector onto the
-    // forward vector.
-    float dot = center.x*look.x + center.y*look.y + center.z*look.z;
-    // Find the distance to the near edge of the cell's bounding sphere.
-    float cell_near_dist = dot - cell->sphere_radius;
-    float max_render_dist = 192.0f; // TODO: get this from fog settings?
-    if (cell_near_dist > max_render_dist) return;
+        // Get the camera position and facing.
+        t2position pos = *t2_portal_camera_pos_ptr;
+        // Build the camera's forward unit vector from its facing.
+        float yaw = pos.fac.z*3.1416f/32768.0f;
+        float pitch = -pos.fac.y*3.1416f/32768.0f;
+        t2vector look;
+        look.x = cos(yaw)*cos(pitch);
+        look.y = sin(yaw)*cos(pitch);
+        look.z = sin(pitch);
+        // Get a vector from the camera position to the center of
+        // the cell's bounding sphere.
+        t2vector center;
+        center.x = cell->sphere_center.x - pos.loc.vec.x;
+        center.y = cell->sphere_center.y - pos.loc.vec.y;
+        center.z = cell->sphere_center.z - pos.loc.vec.z;
+        // Find the distance (parallel to the forward vector) to the
+        // cell's center, by projecting the center vector onto the
+        // forward vector.
+        float dot = center.x*look.x + center.y*look.y + center.z*look.z;
+        // Find the distance to the near edge of the cell's bounding sphere.
+        float cell_near_dist = dot - cell->sphere_radius;
+        if (cell_near_dist > g_Periapt.depthCullDistance) return;
+    }
 
     ORIGINAL_explore_portals(cell);
 }
@@ -779,14 +792,22 @@ void __cdecl HOOK_explore_portals(t2portalcell* cell) {
 extern "C"
 void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     int l=0, r=w, t=0, b=h;
-    if (second_pass_render) {
-        // Adjust the portal clipping rectangle for the second render pass.
-        // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
-        // but for the second pass we want to only include portals that would
-        // be rendered in the periapt viewmodel.
-        //
-        // For now, let's just say "draw the right half of the screen only":
-        l = w/2;
+
+    if (g_Periapt.dualCull) {
+        if (g_isDualRendering) {
+            // Adjust the portal clipping rectangle for the second render pass.
+            // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
+            // but for the second pass we want to only include portals that would
+            // be rendered in the periapt viewmodel.
+            //
+            // For now, let's just say "draw the right half of the screen only":
+            l = w/2;
+
+            l = (int)(w*g_Periapt.dualCullLeft);
+            r = (int)(w*g_Periapt.dualCullRight);
+            t = (int)(h*g_Periapt.dualCullTop);
+            b = (int)(h*g_Periapt.dualCullBottom);
+        }
     }
     clip->l = l<<16;
     clip->t = t<<16;
@@ -924,10 +945,22 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
         bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
         printf("DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
     }
-    if (stricmp(pMsg->message, "BeginScript") == 0) {
+    else if (stricmp(pMsg->message, "BeginScript") == 0) {
         printf("BeginScript\n");
+        // TODO: load settings from saved data (if any)
+        g_Periapt.dualRender = true;
+        g_Periapt.dualOffset.x = -512.0f;
+        g_Periapt.dualOffset.y = -64.0f;
+        g_Periapt.dualOffset.z = 512.0f;
+        g_Periapt.dualCull = true;
+        g_Periapt.dualCullLeft = 0.0f;
+        g_Periapt.dualCullTop = 0.0f;
+        g_Periapt.dualCullRight = 1.0f;
+        g_Periapt.dualCullBottom = 1.0f;
+        g_Periapt.depthCull = true;
+        g_Periapt.depthCullDistance = 192.0f;
     }
-    if (stricmp(pMsg->message, "EndScript") == 0) {
+    else if (stricmp(pMsg->message, "EndScript") == 0) {
         printf("EndScript\n");
     }
     else if (stricmp(pMsg->message, "TurnOn") == 0) {
@@ -935,6 +968,47 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     }
     else if (stricmp(pMsg->message, "TurnOff") == 0) {
         disable_hooks();
+    }
+    else if (stricmp(pMsg->message, "SetDualRender") == 0) {
+        g_Periapt.dualRender = static_cast<bool>(pMsg->data);
+    }
+    else if (stricmp(pMsg->message, "SetDualOffset") == 0) {
+        const mxs_vector *v = static_cast<const mxs_vector *>(pMsg->data);
+        if (v) {
+            g_Periapt.dualOffset.x = v->x;
+            g_Periapt.dualOffset.y = v->y;
+            g_Periapt.dualOffset.z = v->z;
+        }
+    }
+    else if (stricmp(pMsg->message, "SetDualCull") == 0) {
+        g_Periapt.dualCull = static_cast<bool>(pMsg->data);
+    }
+    else if (stricmp(pMsg->message, "SetDualCullRect") == 0) {
+        const mxs_vector *v0 = static_cast<const mxs_vector *>(pMsg->data);
+        const mxs_vector *v1 = static_cast<const mxs_vector *>(pMsg->data);
+        if (v0 && v1) {
+            g_Periapt.dualCullLeft = v0->x;
+            g_Periapt.dualCullTop = v0->y;
+            g_Periapt.dualCullRight = v1->x;
+            g_Periapt.dualCullBottom = v1->y;
+            if (g_Periapt.dualCullLeft<0) g_Periapt.dualCullLeft = 0;
+            if (g_Periapt.dualCullLeft>1) g_Periapt.dualCullLeft = 1;
+            if (g_Periapt.dualCullTop<0) g_Periapt.dualCullTop = 0;
+            if (g_Periapt.dualCullTop>1) g_Periapt.dualCullTop = 1;
+            if (g_Periapt.dualCullRight<0) g_Periapt.dualCullRight = 0;
+            if (g_Periapt.dualCullRight>1) g_Periapt.dualCullRight = 1;
+            if (g_Periapt.dualCullBottom<0) g_Periapt.dualCullBottom = 0;
+            if (g_Periapt.dualCullBottom>1) g_Periapt.dualCullBottom = 1;
+        }
+    }
+    else if (stricmp(pMsg->message, "SetDepthCull") == 0) {
+        g_Periapt.depthCull = static_cast<bool>(pMsg->data);
+    }
+    else if (stricmp(pMsg->message, "SetDepthCullDistance") == 0) {
+        float d = static_cast<float>(pMsg->data);
+        if (d>0) {
+            g_Periapt.depthCullDistance = d;
+        }
     }
 
     return iRet;
