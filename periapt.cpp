@@ -548,7 +548,7 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
 }
 
 static bool g_isDualRendering = false;
-static bool g_dontClearStencil = false;
+static bool g_dontClearTargetOrStencil = false;
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
@@ -570,66 +570,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
 
-#define USE_SCISSOR 0
-#define USE_STENCIL 1
-#if USE_SCISSOR
-        // Render an SS1-style rear-view mirror.
-        // rear-view mirror will be the top third (horizontally) and
-        // quarter (vertically) of the screen.
-        RECT rect = {
-            (long)viewport.X+(long)viewport.Width/3,
-            (long)viewport.Y+0,
-            (long)viewport.X+(2*(long)viewport.Width)/3,
-            (long)viewport.Y+(long)viewport.Height/4,
-        };
-        // // Centered rect, half the screen size:
-        // RECT rect = {
-        //     (long)viewport.X+(1*(long)viewport.Width)/4,
-        //     (long)viewport.Y+(1*(long)viewport.Height)/4,
-        //     (long)viewport.X+(3*(long)viewport.Width)/4,
-        //     (long)viewport.Y+(3*(long)viewport.Height)/4,
-        // };
-
-        // FIXME: we should probably save and restore any state
-        // that we fiddle with, for safety. But not for MAD SCIENCE!!
-        device->SetScissorRect(&rect);
-        device->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
-#endif // USE_SCISSOR
-#if USE_STENCIL
-        D3DRECT viewportRect = {
-            (long)viewport.X,
-            (long)viewport.Y,
-            (long)viewport.X+(long)viewport.Width,
-            (long)viewport.Y+(long)viewport.Height,
-        };
-        D3DRECT periaptRect = {
-            (long)viewport.X+(long)viewport.Width/3,
-            (long)viewport.Y+0,
-            (long)viewport.X+(2*(long)viewport.Width)/3,
-            (long)viewport.Y+(long)viewport.Height/4,
-        };
-        // device->Clear(1, &viewportRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(255,0,0,255), 0, 0);
-        // device->Clear(1, &periaptRect, D3DCLEAR_TARGET, D3DCOLOR_RGBA(0,255,255,255), 0, 0);
-        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-        /* disable the 'mirror', now that there's a stenciled blackjack.
-        device->Clear(1, &viewportRect, D3DCLEAR_STENCIL, 0, 0, 0);
-        device->Clear(1, &periaptRect, D3DCLEAR_STENCIL, 0, 0, 1);
-        // Do some really, really hacky 'rounded' corners so the
-        // difference from the scissor is clear:
-        long cornerWidth = 30;
-        long cornerHeight = 30;
-        for (int y=0; y<2; ++y) {
-            for (int x=0; x<2; ++x) {
-                D3DRECT cornerRect = {
-                    ((x == 0) ? periaptRect.x1 : (periaptRect.x2 - cornerWidth)),
-                    ((y == 0) ? periaptRect.y1 : (periaptRect.y2 - cornerHeight)),
-                    ((x == 0) ? (periaptRect.x1 + cornerWidth) : periaptRect.x2),
-                    ((y == 0) ? (periaptRect.y1 + cornerHeight) : periaptRect.y2),
-                };
-                device->Clear(1, &cornerRect, D3DCLEAR_STENCIL, 0, 0, 0);
-            }
-        }
-        */
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILREF, 0x01);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
@@ -642,8 +582,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // before drawing. We want to keep the previous scene render, so we
         // prevent clearing the target. And we want to keep what we've just
         // put in the stencil, so we prevent clearing the stencil too.
-        g_dontClearStencil = true;
-#endif // USE_STENCIL
+        g_dontClearTargetOrStencil = true;
 
         // And render the reverse view.
 
@@ -661,9 +600,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         pos->loc.cell = -1;
         pos->loc.hint = -1;
 
-        // PROBLEM: this ends up calling device->Clear() again and clearing
-        // the whole stencil buffer! Blargh.
-
         // Calling this again might have undesirable side effects; needs research.
         // Although right now I'm not seeing frobbiness being affected... not a
         // very conclusive test ofc.
@@ -673,19 +609,14 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
         *pos = originalPos;
 
-#if USE_STENCIL
-        g_dontClearStencil = false;
+        g_dontClearTargetOrStencil = false;
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-#endif
-#if USE_SCISSOR
-        device->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-#endif
     }
 }
 
 extern "C"
 void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) {
-    if (g_dontClearStencil) {
+    if (g_dontClearTargetOrStencil) {
         Flags &= ~(D3DCLEAR_TARGET | D3DCLEAR_STENCIL);
     }
     ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
@@ -803,8 +734,6 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
             // be rendered in the periapt viewmodel.
             //
             // For now, let's just say "draw the right half of the screen only":
-            l = w/2;
-
             l = (int)(w*g_Periapt.dualCullLeft);
             r = (int)(w*g_Periapt.dualCullRight);
             t = (int)(h*g_Periapt.dualCullTop);
@@ -955,7 +884,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
         g_Periapt.dualOffset.y = -64.0f;
         g_Periapt.dualOffset.z = 512.0f;
         g_Periapt.dualCull = true;
-        g_Periapt.dualCullLeft = 0.0f;
+        g_Periapt.dualCullLeft = 0.5f;
         g_Periapt.dualCullTop = 0.0f;
         g_Periapt.dualCullRight = 1.0f;
         g_Periapt.dualCullBottom = 1.0f;
@@ -1119,7 +1048,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 
         printf(PREFIX "DLL_PROCESS_DETACH\n");
         printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
-        // DeactivateAllTrampolines();
         if (didAllocConsole) {
             FreeConsole();
         }
