@@ -117,6 +117,7 @@
 using namespace std;
 
 #define HOOKS_SPEW 1
+#define PREFIX "periapt: "
 
 // FIXME: temp
 void readMem(void *addr, DWORD len)
@@ -660,7 +661,7 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     if (g_Periapt.dualRender) {
         const char* name = t2_modelname_Get(obj);
         // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
-        bool isPeriapt = (name && (stricmp(name, "panhand") == 0));
+        bool isPeriapt = (name && (stricmp(name, "periaptv") == 0));
         IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
         if (isPeriapt) {
             if (g_isDualRendering) {
@@ -861,7 +862,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
 
     if (stricmp(pMsg->message, "Sim") == 0) {
         bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
-        printf("Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
+        printf(PREFIX "Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
         if (fStarting) {
             // TODO: later we might want the switch to control just the specific
             // periapt rendering, not necessarily enable/disable hooks generally;
@@ -874,50 +875,61 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     }
     else if (stricmp(pMsg->message, "DarkGameModeChange") == 0) {
         bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
-        printf("DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
+        printf(PREFIX "DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
     }
     else if (stricmp(pMsg->message, "BeginScript") == 0) {
-        printf("BeginScript\n");
+        printf(PREFIX "BeginScript\n");
         // TODO: load settings from saved data (if any)
-        g_Periapt.dualRender = true;
-        g_Periapt.dualOffset.x = -512.0f;
-        g_Periapt.dualOffset.y = -64.0f;
-        g_Periapt.dualOffset.z = 512.0f;
-        g_Periapt.dualCull = true;
-        g_Periapt.dualCullLeft = 0.5f;
+        g_Periapt.dualRender = false;
+        g_Periapt.dualOffset.x = 0.0f;
+        g_Periapt.dualOffset.y = 0.0f;
+        g_Periapt.dualOffset.z = 1.0f;
+        g_Periapt.dualCull = false;
+        g_Periapt.dualCullLeft = 0.0f;
         g_Periapt.dualCullTop = 0.0f;
         g_Periapt.dualCullRight = 1.0f;
         g_Periapt.dualCullBottom = 1.0f;
-        g_Periapt.depthCull = true;
-        g_Periapt.depthCullDistance = 192.0f;
+        g_Periapt.depthCull = false;
+        g_Periapt.depthCullDistance = 256.0f;
     }
     else if (stricmp(pMsg->message, "EndScript") == 0) {
-        printf("EndScript\n");
+        printf(PREFIX "EndScript\n");
     }
     else if (stricmp(pMsg->message, "TurnOn") == 0) {
+        printf(PREFIX "TurnOn\n");
         enable_hooks();
     }
     else if (stricmp(pMsg->message, "TurnOff") == 0) {
+        printf(PREFIX "TurnOn\n");
         disable_hooks();
     }
     else if (stricmp(pMsg->message, "SetDualRender") == 0) {
-        g_Periapt.dualRender = static_cast<bool>(pMsg->data);
+        bool v = static_cast<bool>(pMsg->data);
+        printf(PREFIX "SetDualRender(%s)\n", (v?"true":"false"));
+        g_Periapt.dualRender = v;
     }
     else if (stricmp(pMsg->message, "SetDualOffset") == 0) {
         const mxs_vector *v = static_cast<const mxs_vector *>(pMsg->data);
         if (v) {
+            printf(PREFIX "SetDualOffset(<%0.3f,%0.3f,%0.3f>)\n", v->x, v->y, v->z);
             g_Periapt.dualOffset.x = v->x;
             g_Periapt.dualOffset.y = v->y;
             g_Periapt.dualOffset.z = v->z;
+        } else {
+            printf(PREFIX "SetDualOffset(<not a vector>)\n");
         }
     }
     else if (stricmp(pMsg->message, "SetDualCull") == 0) {
-        g_Periapt.dualCull = static_cast<bool>(pMsg->data);
+        bool v = static_cast<bool>(pMsg->data);
+        printf(PREFIX "SetDualCull(%s)\n", (v?"true":"false"));
+        g_Periapt.dualCull = v;
     }
     else if (stricmp(pMsg->message, "SetDualCullRect") == 0) {
         const mxs_vector *v0 = static_cast<const mxs_vector *>(pMsg->data);
-        const mxs_vector *v1 = static_cast<const mxs_vector *>(pMsg->data);
+        const mxs_vector *v1 = static_cast<const mxs_vector *>(pMsg->data2);
         if (v0 && v1) {
+            printf(PREFIX "SetDualCullRect(<%0.3f,%0.3f,%0.3f>, <%0.3f,%0.3f,%0.3f>)\n",
+                v0->x, v0->y, v0->z, v1->x, v1->y, v1->z);
             g_Periapt.dualCullLeft = v0->x;
             g_Periapt.dualCullTop = v0->y;
             g_Periapt.dualCullRight = v1->x;
@@ -930,13 +942,18 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
             if (g_Periapt.dualCullRight>1) g_Periapt.dualCullRight = 1;
             if (g_Periapt.dualCullBottom<0) g_Periapt.dualCullBottom = 0;
             if (g_Periapt.dualCullBottom>1) g_Periapt.dualCullBottom = 1;
+        } else {
+            printf(PREFIX "SetDualCullRect(<not a vector>, <not a vector>)\n");
         }
     }
     else if (stricmp(pMsg->message, "SetDepthCull") == 0) {
-        g_Periapt.depthCull = static_cast<bool>(pMsg->data);
+        bool v = static_cast<bool>(pMsg->data);
+        printf(PREFIX "SetDepthCull(%s)\n", (v?"true":"false"));
+        g_Periapt.depthCull = v;
     }
     else if (stricmp(pMsg->message, "SetDepthCullDistance") == 0) {
         float d = static_cast<float>(pMsg->data);
+        printf(PREFIX "SetDepthCullDistance(%0.3f)\n", d);
         if (d>0) {
             g_Periapt.depthCullDistance = d;
         }
@@ -966,8 +983,6 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 
 #include <stdio.h>
 #include <windows.h>
-
-#define PREFIX "periapt: "
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
