@@ -657,36 +657,37 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
-    bool doRender = true;
+    bool isPeriapt = false;
     if (g_Periapt.dualRender) {
         const char* name = t2_modelname_Get(obj);
         // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
-        bool isPeriapt = (name && (stricmp(name, "periaptv") == 0));
-        IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-        if (isPeriapt) {
-            if (g_isDualRendering) {
-                // Skip the viewmodel in the dual pass.
-                doRender = false;
-            } else {
-                if (device) {
-                    // Draw the blackjack into the stencil buffer:
-                    // Make sure the stencil test will always pass.
-                    device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-                    device->SetRenderState(D3DRS_STENCILREF, 0x1);
-                    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-                    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-                    // If the z test and stencil tests pass, write the ref into the stencil.
-                    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-                    // Note that we don't bother resetting this state anywhere. That's probab
-                }
-            }
-        }
+        isPeriapt = (name && (stricmp(name, "periaptv") == 0));
     }
 
-    if (doRender) {
+    if (isPeriapt) {
+        if (g_isDualRendering) {
+            // Skip the viewmodel in the dual pass.
+        } else {
+            IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+            if (device) {
+                // Draw the blackjack into the stencil buffer:
+                // Make sure the stencil test will always pass.
+                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+                device->SetRenderState(D3DRS_STENCILREF, 0x1);
+                device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+                // If the z test and stencil tests pass, write the ref into the stencil.
+                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+                ORIGINAL_rendobj_render_object(obj, clut, fragment);
+                // evidently rendobj_render_object() does NOT issue dx calls,
+                // because disabling stencil right here prevents the periapt
+                // rendering into the stencil buffer.
+            }
+        }
+    } else {
         ORIGINAL_rendobj_render_object(obj, clut, fragment);
     }
 }

@@ -224,15 +224,11 @@ _BYPASS_explore_portals:
 
 	.extern _HOOK_initialize_first_region_clip
 	.global _BYPASS_initialize_first_region_clip
-	.global _ORIGINAL_initialize_first_region_clip
 	.global _TRAMPOLINE_initialize_first_region_clip
 
 _TRAMPOLINE_initialize_first_region_clip:
 	.space	5, 0x90				# preamble
 	.space	5, 0x90				# jmp REMAINDER
-
-_ORIGINAL_initialize_first_region_clip:
-	int	3				# doesn't make sense!
 
 _BYPASS_initialize_first_region_clip:
 	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
