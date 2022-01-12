@@ -52,9 +52,10 @@ extern const uint32_t BYPASS_mDrawTriangleLists;
 extern const uint32_t TRAMPOLINE_mDrawTriangleLists;
 */
 
-int __cdecl HOOK_mDrawTriangleLists(void);
+int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
+    UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride);
 extern const uint32_t BYPASS_mDrawTriangleLists;
 extern const uint32_t TRAMPOLINE_mDrawTriangleLists;
-extern uint32_t SKIP_mDrawTriangleLists;
+extern uint32_t RESUME_mDrawTriangleLists;
 
 }

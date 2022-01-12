@@ -42,7 +42,7 @@ To uninstall:
 
 	.global _bypass_enable
 	.global _RESUME_initialize_first_region_clip
-	.global _SKIP_mDrawTriangleLists
+	.global _RESUME_mDrawTriangleLists
 
 _bypass_enable:
 	.byte 0x00
@@ -50,7 +50,7 @@ _bypass_enable:
 _RESUME_initialize_first_region_clip:
 	.space	4, 0x00				# resume address
 
-_SKIP_mDrawTriangleLists:
+_RESUME_mDrawTriangleLists:
 	.space	4, 0x00				# skip address
 
 
@@ -345,31 +345,21 @@ _BYPASS_mDrawTriangleLists:
 /* ------------------------------------------------------------------------*/
 
 # in mDrawTriangleLists				# in media res:
-#	ESI
-#	EDI
-#	EDX
+#	int *info;				# EDI (info[2] is element count)
+#	void *
 
 	.extern _HOOK_mDrawTriangleLists
 	.global _BYPASS_mDrawTriangleLists
 	.global _TRAMPOLINE_mDrawTriangleLists
 
 _TRAMPOLINE_mDrawTriangleLists:
-	.space	5, 0x90				# preamble
+	.space	6, 0x90				# preamble
 	.space	5, 0x90				# jmp REMAINDER
 
 _BYPASS_mDrawTriangleLists:
 	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
 	jz	_TRAMPOLINE_mDrawTriangleLists	#	.
-	push	ecx				# preserve registers
-	push	edx				#	.
+						# params are on stack already
 	call	_HOOK_mDrawTriangleLists	# call HOOK
-	test	eax,eax
-	jz	_dont_skip_mDrawTriangleLists
-	pop	edx				# restore registers
-	pop	ecx				#	.
-	xor	eax,eax
-	jmp	dword ptr [_SKIP_mDrawTriangleLists]
-_dont_skip_mDrawTriangleLists:
-	pop	edx				# restore registers
-	pop	ecx				#	.
-	jmp	_TRAMPOLINE_mDrawTriangleLists
+	add	sp, 20				# cleanup
+	jmp	dword ptr [_RESUME_mDrawTriangleLists]

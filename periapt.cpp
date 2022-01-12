@@ -116,7 +116,7 @@
 
 using namespace std;
 
-#define HOOKS_SPEW 1
+#define HOOKS_SPEW 0
 #define PREFIX "periapt: "
 
 // FIXME: temp
@@ -351,7 +351,7 @@ struct GameInfo {
     DWORD mm_hardware_render_preamble;
     DWORD mDrawTriangleLists;
     DWORD mDrawTriangleLists_preamble;
-    DWORD mDrawTriangleLists_skip;
+    DWORD mDrawTriangleLists_resume;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
@@ -378,7 +378,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_setup_material
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
-        0,                  // mDrawTriangleLists_skip
+        0,                  // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
@@ -399,7 +399,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_setup_material
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
-        0,                  // mDrawTriangleLists_skip
+        0,                  // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
@@ -420,7 +420,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_setup_material
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
-        0,                  // mDrawTriangleLists_skip
+        0,                  // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
@@ -441,8 +441,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002e9be0UL, 7,    // mm_setup_material
         0x002e9ab0UL, 8,    // mm_hardware_render
 //        0x002e7990UL, 7,    // mDrawTriangleLists
-        0x002e7a27UL, 5,    // mDrawTriangleLists
-        0x002e7a40UL,       // mDrawTriangleLists_skip
+        0x002e7a38UL, 6,    // mDrawTriangleLists
+        0x002e7a40UL,       // mDrawTriangleLists_resume
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
@@ -471,7 +471,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.mm_setup_material, base);
     fixup_addr(&GameInfoTable.mm_hardware_render, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists, base);
-    fixup_addr(&GameInfoTable.mDrawTriangleLists_skip, base);
+    fixup_addr(&GameInfoTable.mDrawTriangleLists_resume, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
@@ -488,7 +488,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     t2_mmd_version_ptr = (int*)GameInfoTable.mmd_version;
     t2_mmd_smatrs_ptr = (void**)GameInfoTable.mmd_smatrs;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
-    SKIP_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_skip;
+    RESUME_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_resume;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -500,7 +500,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: mm_setup_material = %08x\n", (unsigned int)GameInfoTable.mm_setup_material);
     printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
     printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
-    printf("periapt: mDrawTriangleLists_skip = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_skip);
+    printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
@@ -598,18 +598,12 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     }
 }
 
-#define STENCIL_OP_COUNT  8
-#define STENCIL_NOP 0       // do nothing
-#define STENCIL_ONE 1       // draw 1 into stencil buffer
-#define STENCIL_ZERO 2      // draw 0 into stencil buffer
-#define STENCIL_DISABLE 3   // disable stencil
-
 static struct {
     bool isRenderingDual;
     bool dontClearTargetOrStencil;
     bool isDrawingPeriapt;
-    int stencilOp[STENCIL_OP_COUNT];
-    int currentStencilOp;
+    uint32_t stencilOpCounter; // 0: ignore; 1+: read op bit and decrement.
+    uint32_t stencilOp; // bit==0: erase stencil; bit==1: draw into stencil
 } g_State = {};
 
 extern "C"
@@ -631,8 +625,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
-
-        printf("  STENCIL for second pass\n");
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILREF, 0x01);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
@@ -719,6 +711,8 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
+    // TODO: can probably simplify this by _not_ testing the model name, but
+    //       just evaluating EVERY mesh drawn by dark_render_overlays.
     bool isPeriapt = false;
     if (g_Periapt.dualRender) {
         const char* name = t2_modelname_Get(obj);
@@ -727,41 +721,8 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     }
     g_State.isDrawingPeriapt = isPeriapt;
 
-    // TEMP:
-    {
-        const char* name = t2_modelname_Get(obj);
-        printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
-    }
-
-    if (isPeriapt) {
-        if (g_State.isRenderingDual) {
-            // Skip the viewmodel in the dual pass.
-            printf("SKIPPING render\n");
-        } else {
-            IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-            if (device) {
-// TEMP: probably clear this out, because we need to stencil only the _gem_. which we
-//       do through the hooks further down.
-#define ORIGINAL_STENCIL 0
-#if ORIGINAL_STENCIL
-                // Draw the blackjack into the stencil buffer:
-                // Make sure the stencil test will always pass.
-                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-                device->SetRenderState(D3DRS_STENCILREF, 0x1);
-                device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-                // If the z test and stencil tests pass, write the ref into the stencil.
-                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-#endif
-                ORIGINAL_rendobj_render_object(obj, clut, fragment);
-                // evidently rendobj_render_object() does NOT issue dx calls,
-                // because disabling stencil right here prevents the periapt
-                // rendering into the stencil buffer.
-            }
-        }
+    if (isPeriapt && g_State.isRenderingDual) {
+        // Skip the viewmodel in the dual pass.
     } else {
         ORIGINAL_rendobj_render_object(obj, clut, fragment);
     }
@@ -857,108 +818,50 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     && g_State.isDrawingPeriapt) {
         char *base = ((char *)m) + m->smatr_off;
         uint32_t size = (m->version==1)? sizeof(t2smatr_v1) : sizeof(t2smatr_v2);
-        // Write the ops needed for this model
-        int op = 0;
-        int count = m->smatrs;
-        if (count>=STENCIL_OP_COUNT) count = STENCIL_OP_COUNT-1;
-        for (int i=0; i<count; ++i) {
+        // Find which materials (if any) is the special one, and write a 1
+        // bit into the stencil op for it.
+        g_State.stencilOp = 0;
+        g_State.stencilOpCounter = 0;
+        for (int i=0; i<m->smatrs; ++i) {
             char *name = (base+i*size);
-            printf("  %d: %16s\n", i, name);
+            ++g_State.stencilOpCounter;
             if (stricmp(name, "pericry1.png")==0) {
-                g_State.stencilOp[op++] = STENCIL_ONE;
-            } else {
-                g_State.stencilOp[op++] = STENCIL_ZERO;
+                g_State.stencilOp |= (1UL << i);
             }
         }
-        g_State.stencilOp[op] = STENCIL_DISABLE;
-        // Restart the stencil ops
-        g_State.currentStencilOp = 0;
     }
     
     ORIGINAL_mm_hardware_render(m);
 }
 
-#if 0
 extern "C"
-void __cdecl HOOK_mDrawTriangleLists(void *unknown) {
-    if (g_State.applyStencil) {
-        if (--g_State.applyStencil==0) {
-            printf("  APPLYING STENCIL\n");
-            IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-            if (device) {
-#if !ORIGINAL_STENCIL
-                // Draw the blackjack into the stencil buffer:
-                // Make sure the stencil test will always pass.
-                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-                device->SetRenderState(D3DRS_STENCILREF, 0x1);
-                device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-                // If the z test and stencil tests pass, write the ref into the stencil.
-                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-#endif
-                device->SetTexture(0, NULL); // TEMP
-                ORIGINAL_mDrawTriangleLists(unknown);
-#if !ORIGINAL_STENCIL
-                device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-#endif
-            }
-            return;
+int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
+    UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
+
+    if (g_State.stencilOpCounter) {
+        // Get the stencil op for this draw
+        uint32_t op = g_State.stencilOp & 1;
+        g_State.stencilOp >>= 1;
+        // Apply it
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+        device->SetRenderState(D3DRS_STENCILREF, 0x1);
+        device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILPASS, op ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
+        HRESULT result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+            pVertexStreamZeroData, VertexStreamZeroStride);
+        // Disable stencil ops when the last one was done.
+        if (--g_State.stencilOpCounter==0) {
+            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
         }
+        return result;
+    } else {
+        return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+            pVertexStreamZeroData, VertexStreamZeroStride);
     }
-
-    ORIGINAL_mDrawTriangleLists(unknown);
-}
-#endif
-
-extern "C"
-int __cdecl HOOK_mDrawTriangleLists(void) {
-    // Fetch the next stencil op
-    if (g_State.currentStencilOp<STENCIL_OP_COUNT) {
-        IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
-        if (device) {
-            int op = g_State.stencilOp[g_State.currentStencilOp++];
-            switch (op) {
-                case STENCIL_ONE:
-                    device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-                    device->SetRenderState(D3DRS_STENCILREF, 0x1);
-                    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-                    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-                    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-                    printf("  STENCIL: 1\n");
-                    device->SetTexture(0, NULL); // TEMP
-                    // Fall through
-                case STENCIL_ZERO:
-                    device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-                    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-                    device->SetRenderState(D3DRS_STENCILREF, 0x1);
-                    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-                    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-                    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
-                    printf("  STENCIL: 0\n");
-                    break;
-                case STENCIL_DISABLE:
-                    printf("  STENCIL DISABLE\n");
-                    // //device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-                    // device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NEVER);
-                    // device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-                    // device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-                    // device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
-                    g_State.currentStencilOp = STENCIL_OP_COUNT;
-                    break;
-                case STENCIL_NOP: break;
-            }
-        }
-    }
-
-    return 0;
 }
 
 // TODO: I don't think we want to hook and unhook many parts individually,
