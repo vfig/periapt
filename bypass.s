@@ -42,12 +42,17 @@ To uninstall:
 
 	.global _bypass_enable
 	.global _RESUME_initialize_first_region_clip
+	.global _SKIP_mDrawTriangleLists
 
 _bypass_enable:
 	.byte 0x00
 
 _RESUME_initialize_first_region_clip:
 	.space	4, 0x00				# resume address
+
+_SKIP_mDrawTriangleLists:
+	.space	4, 0x00				# skip address
+
 
 /* ------------------------------------------------------------------------*/
 
@@ -245,3 +250,126 @@ _BYPASS_initialize_first_region_clip:
 	pop	ecx				#	.
 	pop	eax				#	.
 	jmp	dword ptr [_RESUME_initialize_first_region_clip]
+
+
+/* ------------------------------------------------------------------------*/
+
+# void mm_setup_material(index)			# Custom convention, caller cleanup:
+#	int index;				# EDI
+#						# Void return.
+
+	.extern _HOOK_mm_setup_material
+	.global _BYPASS_mm_setup_material
+	.global _ORIGINAL_mm_setup_material
+	.global _TRAMPOLINE_mm_setup_material
+
+_TRAMPOLINE_mm_setup_material:
+	.space	7, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_mm_setup_material:
+	mov	edi, dword ptr [esp+4]		# swizzle args to custom convention
+	call	_TRAMPOLINE_mm_setup_material	# call TRAMPOLINE
+	ret					#	.
+
+_BYPASS_mm_setup_material:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_mm_setup_material	#	.
+	push	edi				#	.
+	call	_HOOK_mm_setup_material		# call HOOK
+	add	sp, 4				# cleanup
+	ret					#	.
+
+
+/* ------------------------------------------------------------------------*/
+
+# void mm_hardware_render(m)			# __cdecl
+#	t2mmsmodel *m;				# Mesh to render.
+#						# Void return.
+
+	.extern _HOOK_mm_hardware_render
+	.global _BYPASS_mm_hardware_render
+	.global _ORIGINAL_mm_hardware_render
+	.global _TRAMPOLINE_mm_hardware_render
+
+_TRAMPOLINE_mm_hardware_render:
+	.space	8, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_mm_hardware_render:
+	jmp	_TRAMPOLINE_mm_hardware_render	# call TRAMPOLINE
+
+_BYPASS_mm_hardware_render:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_mm_hardware_render	#	.
+	jmp	_HOOK_mm_hardware_render	# call HOOK
+
+
+/* ------------------------------------------------------------------------*/
+/*
+# void mDrawTriangleLists(unknown)		# Custom convention, caller cleanup:
+#	void *unknown;				# ESI
+#						# Void return.
+
+	.extern _HOOK_mDrawTriangleLists
+	.global _BYPASS_mDrawTriangleLists
+	.global _ORIGINAL_mDrawTriangleLists
+	.global _TRAMPOLINE_mDrawTriangleLists
+
+_TRAMPOLINE_mDrawTriangleLists:
+	.space	7, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_ORIGINAL_mDrawTriangleLists:
+	push	esi
+	mov	esi, dword ptr [esp+8]		# swizzle args to custom convention
+	call	_TRAMPOLINE_mDrawTriangleLists	# call TRAMPOLINE
+	pop	esi
+	ret					#	.
+
+_BYPASS_mDrawTriangleLists:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_mDrawTriangleLists	#	.
+	push	eax				# preserve registers
+	push	ecx				#	.
+	push	edx				#	.
+	push	esi				# param 0
+	call	_HOOK_mDrawTriangleLists	# call HOOK
+	add	sp, 4				# cleanup
+	pop	edx				# restore registers
+	pop	ecx				#	.
+	pop	eax				#	.
+	ret					#	.
+*/
+
+/* ------------------------------------------------------------------------*/
+
+# in mDrawTriangleLists				# in media res:
+#	ESI
+#	EDI
+#	EDX
+
+	.extern _HOOK_mDrawTriangleLists
+	.global _BYPASS_mDrawTriangleLists
+	.global _TRAMPOLINE_mDrawTriangleLists
+
+_TRAMPOLINE_mDrawTriangleLists:
+	.space	5, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_BYPASS_mDrawTriangleLists:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_mDrawTriangleLists	#	.
+	push	ecx				# preserve registers
+	push	edx				#	.
+	call	_HOOK_mDrawTriangleLists	# call HOOK
+	test	eax,eax
+	jz	_dont_skip_mDrawTriangleLists
+	pop	edx				# restore registers
+	pop	ecx				#	.
+	xor	eax,eax
+	jmp	dword ptr [_SKIP_mDrawTriangleLists]
+_dont_skip_mDrawTriangleLists:
+	pop	edx				# restore registers
+	pop	ecx				#	.
+	jmp	_TRAMPOLINE_mDrawTriangleLists

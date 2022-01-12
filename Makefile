@@ -84,7 +84,7 @@ all: periapt.osm
 %.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
 	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
-periapt.o: bypass.h
+periapt.o: bypass.h t2types.h
 
 periapt.osm: periapt.o bypass.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
 	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)

@@ -279,6 +279,8 @@ t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
 t2position *t2_portal_camera_pos_ptr;
+int *t2_mmd_version_ptr;
+void **t2_mmd_smatrs_ptr;
 
 struct t2_modelname_vtable {
     DWORD reserved0;
@@ -343,6 +345,13 @@ struct GameInfo {
     DWORD initialize_first_region_clip;
     DWORD initialize_first_region_clip_preamble;
     DWORD initialize_first_region_clip_resume;
+    DWORD mm_setup_material;
+    DWORD mm_setup_material_preamble;
+    DWORD mm_hardware_render;
+    DWORD mm_hardware_render_preamble;
+    DWORD mDrawTriangleLists;
+    DWORD mDrawTriangleLists_preamble;
+    DWORD mDrawTriangleLists_skip;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
@@ -350,6 +359,8 @@ struct GameInfo {
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
     DWORD portal_camera_pos;
+    DWORD mmd_version;
+    DWORD mmd_smatrs;
 };
 
 static GameInfo GameInfoTable = {};
@@ -364,12 +375,17 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // explore_portals
         0, 0, /* TODO */    // initialize_first_region_clip
         0,                  // initialize_first_region_clip_resume
+        0, 0, /* TODO */    // mm_setup_material
+        0, 0, /* TODO */    // mm_hardware_render
+        0, 0, /* TODO */    // mDrawTriangleLists
+        0,                  // mDrawTriangleLists_skip
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
-
+        0,                  // mmd_version
+        0,                  // mmd_smatrs
     },
     // ExeDromEd_v126
     {
@@ -380,11 +396,17 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // explore_portals
         0, 0, /* TODO */    // initialize_first_region_clip
         0,                  // initialize_first_region_clip_resume
+        0, 0, /* TODO */    // mm_setup_material
+        0, 0, /* TODO */    // mm_hardware_render
+        0, 0, /* TODO */    // mDrawTriangleLists
+        0,                  // mDrawTriangleLists_skip
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
+        0,                  // mmd_version
+        0,                  // mmd_smatrs
     },
     // ExeThief_v127
     {
@@ -395,11 +417,17 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x000cc0f0UL, 6,    // explore_portals
         0x000cda79UL, 5,    // initialize_first_region_clip
         0x000cda9eUL,       // initialize_first_region_clip_resume
+        0, 0, /* TODO */    // mm_setup_material
+        0, 0, /* TODO */    // mm_hardware_render
+        0, 0, /* TODO */    // mDrawTriangleLists
+        0,                  // mDrawTriangleLists_skip
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
         0x00460bf0UL,       // portal_camera_pos
+        0,                  // mmd_version
+        0,                  // mmd_smatrs
     },
     // ExeDromEd_v127
     {
@@ -410,11 +438,18 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001501e0UL, 6,    // explore_portals
         0x00151d09UL, 5,    // initialize_first_region_clip
         0x00151d2eUL,       // initialize_first_region_clip_resume
+        0x002e9be0UL, 7,    // mm_setup_material
+        0x002e9ab0UL, 8,    // mm_hardware_render
+//        0x002e7990UL, 7,    // mDrawTriangleLists
+        0x002e7a27UL, 5,    // mDrawTriangleLists
+        0x002e7a40UL,       // mDrawTriangleLists_skip
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
         0x0140216cUL,       // portal_camera_pos
+        0x0172d8b8UL,       // mmd_version
+        0x0172d8b4UL,       // mmd_smatrs
     },
 };
 
@@ -433,18 +468,27 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.explore_portals, base);
     fixup_addr(&GameInfoTable.initialize_first_region_clip, base);
     fixup_addr(&GameInfoTable.initialize_first_region_clip_resume, base);
+    fixup_addr(&GameInfoTable.mm_setup_material, base);
+    fixup_addr(&GameInfoTable.mm_hardware_render, base);
+    fixup_addr(&GameInfoTable.mDrawTriangleLists, base);
+    fixup_addr(&GameInfoTable.mDrawTriangleLists_skip, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
     fixup_addr(&GameInfoTable.portal_camera_pos, base);
+    fixup_addr(&GameInfoTable.mmd_version, base);
+    fixup_addr(&GameInfoTable.mmd_smatrs, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
+    t2_mmd_version_ptr = (int*)GameInfoTable.mmd_version;
+    t2_mmd_smatrs_ptr = (void**)GameInfoTable.mmd_smatrs;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
+    SKIP_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_skip;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -453,12 +497,18 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
     printf("periapt: explore_portals = %08x\n", (unsigned int)GameInfoTable.explore_portals);
     printf("periapt: initialize_first_region_clip = %08x\n", (unsigned int)GameInfoTable.initialize_first_region_clip);
+    printf("periapt: mm_setup_material = %08x\n", (unsigned int)GameInfoTable.mm_setup_material);
+    printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
+    printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
+    printf("periapt: mDrawTriangleLists_skip = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_skip);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
     printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
+    printf("periapt: t2_mmd_version_ptr = %08x\n", (unsigned int)t2_mmd_version_ptr);
+    printf("periapt: t2_mmd_smatrs_ptr = %08x\n", (unsigned int)t2_mmd_smatrs_ptr);
     printf("periapt: RESUME_initialize_first_region_clip = %08x\n", (unsigned int)RESUME_initialize_first_region_clip);
 #endif
 }
@@ -548,8 +598,19 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
     }
 }
 
-static bool g_isDualRendering = false;
-static bool g_dontClearTargetOrStencil = false;
+#define STENCIL_OP_COUNT  8
+#define STENCIL_NOP 0       // do nothing
+#define STENCIL_ONE 1       // draw 1 into stencil buffer
+#define STENCIL_ZERO 2      // draw 0 into stencil buffer
+#define STENCIL_DISABLE 3   // disable stencil
+
+static struct {
+    bool isRenderingDual;
+    bool dontClearTargetOrStencil;
+    bool isDrawingPeriapt;
+    int stencilOp[STENCIL_OP_COUNT];
+    int currentStencilOp;
+} g_State = {};
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
@@ -571,6 +632,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         D3DVIEWPORT9 viewport = {};
         device->GetViewport(&viewport);
 
+        printf("  STENCIL for second pass\n");
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILREF, 0x01);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
@@ -583,7 +645,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // before drawing. We want to keep the previous scene render, so we
         // prevent clearing the target. And we want to keep what we've just
         // put in the stencil, so we prevent clearing the stencil too.
-        g_dontClearTargetOrStencil = true;
+        g_State.dontClearTargetOrStencil = true;
 
         // And render the reverse view.
 
@@ -604,20 +666,20 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // Calling this again might have undesirable side effects; needs research.
         // Although right now I'm not seeing frobbiness being affected... not a
         // very conclusive test ofc.
-        g_isDualRendering = true;
+        g_State.isRenderingDual = true;
         ORIGINAL_cam_render_scene(pos, zoom);
-        g_isDualRendering = false;
+        g_State.isRenderingDual = false;
 
         *pos = originalPos;
 
-        g_dontClearTargetOrStencil = false;
+        g_State.dontClearTargetOrStencil = false;
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
     }
 }
 
 extern "C"
 void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD Flags, D3DCOLOR Color, float Z, DWORD Stencil) {
-    if (g_dontClearTargetOrStencil) {
+    if (g_State.dontClearTargetOrStencil) {
         Flags &= ~(D3DCLEAR_TARGET | D3DCLEAR_STENCIL);
     }
     ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
@@ -663,13 +725,25 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
         // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
         isPeriapt = (name && (stricmp(name, "periaptv") == 0));
     }
+    g_State.isDrawingPeriapt = isPeriapt;
+
+    // TEMP:
+    {
+        const char* name = t2_modelname_Get(obj);
+        printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
+    }
 
     if (isPeriapt) {
-        if (g_isDualRendering) {
+        if (g_State.isRenderingDual) {
             // Skip the viewmodel in the dual pass.
+            printf("SKIPPING render\n");
         } else {
             IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
             if (device) {
+// TEMP: probably clear this out, because we need to stencil only the _gem_. which we
+//       do through the hooks further down.
+#define ORIGINAL_STENCIL 0
+#if ORIGINAL_STENCIL
                 // Draw the blackjack into the stencil buffer:
                 // Make sure the stencil test will always pass.
                 device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
@@ -681,6 +755,7 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
                 device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
                 device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
                 device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+#endif
                 ORIGINAL_rendobj_render_object(obj, clut, fragment);
                 // evidently rendobj_render_object() does NOT issue dx calls,
                 // because disabling stencil right here prevents the periapt
@@ -729,7 +804,7 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     int l=0, r=w, t=0, b=h;
 
     if (g_Periapt.dualCull) {
-        if (g_isDualRendering) {
+        if (g_State.isRenderingDual) {
             // Adjust the portal clipping rectangle for the second render pass.
             // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
             // but for the second pass we want to only include portals that would
@@ -752,6 +827,140 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     clip->br = clip->r + clip->b;
 }
 
+// TODO: can drop this one, i think
+extern "C"
+void __cdecl HOOK_mm_setup_material(int index) {
+    /*
+    int version = *t2_mmd_version_ptr;
+    if (version==1) {
+        t2smatr_v1 *mmd_smatrs = *((t2smatr_v1 **)t2_mmd_smatrs_ptr);
+        char *name = mmd_smatrs[index].name;
+        uint32_t handle = mmd_smatrs[index].handle;
+        printf("mm_setup_material(%d): '%16s' 0x%08X\n", index, name, handle); 
+    } else if (version==2) {
+        t2smatr_v2 *mmd_smatrs = *((t2smatr_v2 **)t2_mmd_smatrs_ptr);
+        char *name = mmd_smatrs[index].name;
+        uint32_t handle = mmd_smatrs[index].handle;
+        printf("mm_setup_material(%d): '%16s' 0x%08X\n", index, name, handle); 
+    } else {
+        printf("mm_setup_material(%d): bad version %d\n", index, version); 
+    }
+    */
+
+    ORIGINAL_mm_setup_material(index);
+}
+
+extern "C"
+void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
+    if (g_Periapt.dualRender
+    && !g_State.isRenderingDual
+    && g_State.isDrawingPeriapt) {
+        char *base = ((char *)m) + m->smatr_off;
+        uint32_t size = (m->version==1)? sizeof(t2smatr_v1) : sizeof(t2smatr_v2);
+        // Write the ops needed for this model
+        int op = 0;
+        int count = m->smatrs;
+        if (count>=STENCIL_OP_COUNT) count = STENCIL_OP_COUNT-1;
+        for (int i=0; i<count; ++i) {
+            char *name = (base+i*size);
+            printf("  %d: %16s\n", i, name);
+            if (stricmp(name, "pericry1.png")==0) {
+                g_State.stencilOp[op++] = STENCIL_ONE;
+            } else {
+                g_State.stencilOp[op++] = STENCIL_ZERO;
+            }
+        }
+        g_State.stencilOp[op] = STENCIL_DISABLE;
+        // Restart the stencil ops
+        g_State.currentStencilOp = 0;
+    }
+    
+    ORIGINAL_mm_hardware_render(m);
+}
+
+#if 0
+extern "C"
+void __cdecl HOOK_mDrawTriangleLists(void *unknown) {
+    if (g_State.applyStencil) {
+        if (--g_State.applyStencil==0) {
+            printf("  APPLYING STENCIL\n");
+            IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+            if (device) {
+#if !ORIGINAL_STENCIL
+                // Draw the blackjack into the stencil buffer:
+                // Make sure the stencil test will always pass.
+                device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+                device->SetRenderState(D3DRS_STENCILREF, 0x1);
+                device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+                device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+                // If the z test and stencil tests pass, write the ref into the stencil.
+                device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+#endif
+                device->SetTexture(0, NULL); // TEMP
+                ORIGINAL_mDrawTriangleLists(unknown);
+#if !ORIGINAL_STENCIL
+                device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+#endif
+            }
+            return;
+        }
+    }
+
+    ORIGINAL_mDrawTriangleLists(unknown);
+}
+#endif
+
+extern "C"
+int __cdecl HOOK_mDrawTriangleLists(void) {
+    // Fetch the next stencil op
+    if (g_State.currentStencilOp<STENCIL_OP_COUNT) {
+        IDirect3DDevice9* device = (t2_d3d9device_ptr ? *t2_d3d9device_ptr : NULL);
+        if (device) {
+            int op = g_State.stencilOp[g_State.currentStencilOp++];
+            switch (op) {
+                case STENCIL_ONE:
+                    device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+                    device->SetRenderState(D3DRS_STENCILREF, 0x1);
+                    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+                    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+                    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+                    printf("  STENCIL: 1\n");
+                    device->SetTexture(0, NULL); // TEMP
+                    // Fall through
+                case STENCIL_ZERO:
+                    device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+                    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+                    device->SetRenderState(D3DRS_STENCILREF, 0x1);
+                    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
+                    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+                    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
+                    printf("  STENCIL: 0\n");
+                    break;
+                case STENCIL_DISABLE:
+                    printf("  STENCIL DISABLE\n");
+                    // //device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+                    // device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NEVER);
+                    // device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+                    // device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+                    // device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+                    g_State.currentStencilOp = STENCIL_OP_COUNT;
+                    break;
+                case STENCIL_NOP: break;
+            }
+        }
+    }
+
+    return 0;
+}
+
 // TODO: I don't think we want to hook and unhook many parts individually,
 // so change this to use a single flag for if all hooks are installed or not.
 bool hooked_cam_render_scene;
@@ -760,6 +969,9 @@ bool hooked_dark_render_overlays;
 bool hooked_rendobj_render_object;
 bool hooked_explore_portals;
 bool hooked_initialize_first_region_clip;
+bool hooked_mm_setup_material;
+bool hooked_mm_hardware_render;
+bool hooked_mDrawTriangleLists;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -798,6 +1010,24 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
         (uint32_t)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
+    hooks_spew("Hooking mm_setup_material...\n");
+    install_hook(&hooked_mm_setup_material,
+        (uint32_t)GameInfoTable.mm_setup_material,
+        (uint32_t)&TRAMPOLINE_mm_setup_material,
+        (uint32_t)&BYPASS_mm_setup_material,
+        GameInfoTable.mm_setup_material_preamble);
+    hooks_spew("Hooking mm_hardware_render...\n");
+    install_hook(&hooked_mm_hardware_render,
+        (uint32_t)GameInfoTable.mm_hardware_render,
+        (uint32_t)&TRAMPOLINE_mm_hardware_render,
+        (uint32_t)&BYPASS_mm_hardware_render,
+        GameInfoTable.mm_hardware_render_preamble);
+    hooks_spew("Hooking mDrawTriangleLists...\n");
+    install_hook(&hooked_mDrawTriangleLists,
+        (uint32_t)GameInfoTable.mDrawTriangleLists,
+        (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
+        (uint32_t)&BYPASS_mDrawTriangleLists,
+        GameInfoTable.mDrawTriangleLists_preamble);
 }
 
 void remove_all_hooks() {
@@ -837,6 +1067,24 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
         (uint32_t)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
+    hooks_spew("Unhooking mm_setup_material...\n");
+    remove_hook(&hooked_mm_setup_material,
+        (uint32_t)GameInfoTable.mm_setup_material,
+        (uint32_t)&TRAMPOLINE_mm_setup_material,
+        (uint32_t)&BYPASS_mm_setup_material,
+        GameInfoTable.mm_setup_material_preamble);
+    hooks_spew("Unhooking mm_hardware_render...\n");
+    remove_hook(&hooked_mm_hardware_render,
+        (uint32_t)GameInfoTable.mm_hardware_render,
+        (uint32_t)&TRAMPOLINE_mm_hardware_render,
+        (uint32_t)&BYPASS_mm_hardware_render,
+        GameInfoTable.mm_hardware_render_preamble);
+    hooks_spew("Unhooking mDrawTriangleLists...\n");
+    remove_hook(&hooked_mDrawTriangleLists,
+        (uint32_t)GameInfoTable.mDrawTriangleLists,
+        (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
+        (uint32_t)&BYPASS_mDrawTriangleLists,
+        GameInfoTable.mDrawTriangleLists_preamble);
 }
 
 /*** Script class declarations (this will usually be in a header file) ***/

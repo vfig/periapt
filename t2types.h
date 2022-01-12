@@ -35,4 +35,65 @@ typedef struct t2portalcell {
 typedef struct t2clipdata {
     int l,r,t,b;
     int tl,tr,bl,br;
-};
+} t2clipdata;
+
+typedef struct t2mmsmodel {
+    char magic[4]; // "LGMM"
+    uint32_t version; // 1 or 2
+    float radius;
+    uint32_t flags;
+    uint32_t app_data;
+    uint8_t layout;
+    uint8_t segs;
+    uint8_t smatrs;
+    uint8_t smatsegs;
+    uint16_t pgons;
+    uint16_t verts;
+    uint16_t weights;
+    uint16_t pad;
+    uint32_t map_off;
+    uint32_t seg_off;
+    uint32_t smatr_off;
+    uint32_t smatseg_off;
+    uint32_t pgon_off;
+    uint32_t norm_off;
+    uint32_t vert_vec_off;
+    uint32_t vert_uvn_off;
+    uint32_t weight_off;
+} t2mmsmodel;
+
+typedef struct t2smatr_v1 {
+    char name[16];
+    uint32_t handle;
+    float uv;
+    uint8_t mat_type;
+    uint8_t smatsegs;
+    uint8_t map_start;
+    uint8_t flags;
+    uint16_t pgons;
+    uint16_t pgon_start;
+    uint16_t verts;
+    uint16_t vert_start;
+    uint16_t weight_start;
+    uint16_t pad0;
+} t2smatr_v1; /* 40 bytes */
+
+typedef struct t2smatr_v2 {
+    char name[16];
+    uint32_t caps;
+    float alpha;
+    float self_illum;
+    uint32_t pad0;
+    uint32_t handle;
+    float uv;
+    uint8_t mat_type;
+    uint8_t smatsegs;
+    uint8_t map_start;
+    uint8_t flags;
+    uint16_t pgons;
+    uint16_t pgon_start;
+    uint16_t verts;
+    uint16_t vert_start;
+    uint16_t weight_start;
+    uint16_t pad1;
+} t2smatr_v2; /* 56 bytes */
