@@ -254,35 +254,6 @@ _BYPASS_initialize_first_region_clip:
 
 /* ------------------------------------------------------------------------*/
 
-# void mm_setup_material(index)			# Custom convention, caller cleanup:
-#	int index;				# EDI
-#						# Void return.
-
-	.extern _HOOK_mm_setup_material
-	.global _BYPASS_mm_setup_material
-	.global _ORIGINAL_mm_setup_material
-	.global _TRAMPOLINE_mm_setup_material
-
-_TRAMPOLINE_mm_setup_material:
-	.space	7, 0x90				# preamble
-	.space	5, 0x90				# jmp REMAINDER
-
-_ORIGINAL_mm_setup_material:
-	mov	edi, dword ptr [esp+4]		# swizzle args to custom convention
-	call	_TRAMPOLINE_mm_setup_material	# call TRAMPOLINE
-	ret					#	.
-
-_BYPASS_mm_setup_material:
-	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
-	jz	_TRAMPOLINE_mm_setup_material	#	.
-	push	edi				#	.
-	call	_HOOK_mm_setup_material		# call HOOK
-	add	sp, 4				# cleanup
-	ret					#	.
-
-
-/* ------------------------------------------------------------------------*/
-
 # void mm_hardware_render(m)			# __cdecl
 #	t2mmsmodel *m;				# Mesh to render.
 #						# Void return.

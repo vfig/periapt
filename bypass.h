@@ -35,11 +35,6 @@ extern const uint32_t BYPASS_initialize_first_region_clip;
 extern const uint32_t TRAMPOLINE_initialize_first_region_clip;
 extern uint32_t RESUME_initialize_first_region_clip;
 
-void __cdecl HOOK_mm_setup_material(int index);
-extern void __cdecl ORIGINAL_mm_setup_material(int index);
-extern const uint32_t BYPASS_mm_setup_material;
-extern const uint32_t TRAMPOLINE_mm_setup_material;
-
 void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m);
 extern void __cdecl ORIGINAL_mm_hardware_render(t2mmsmodel *m);
 extern const uint32_t BYPASS_mm_hardware_render;

@@ -279,8 +279,6 @@ t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
 t2position *t2_portal_camera_pos_ptr;
-int *t2_mmd_version_ptr;
-void **t2_mmd_smatrs_ptr;
 
 struct t2_modelname_vtable {
     DWORD reserved0;
@@ -345,8 +343,6 @@ struct GameInfo {
     DWORD initialize_first_region_clip;
     DWORD initialize_first_region_clip_preamble;
     DWORD initialize_first_region_clip_resume;
-    DWORD mm_setup_material;
-    DWORD mm_setup_material_preamble;
     DWORD mm_hardware_render;
     DWORD mm_hardware_render_preamble;
     DWORD mDrawTriangleLists;
@@ -359,8 +355,6 @@ struct GameInfo {
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
     DWORD portal_camera_pos;
-    DWORD mmd_version;
-    DWORD mmd_smatrs;
 };
 
 static GameInfo GameInfoTable = {};
@@ -375,7 +369,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // explore_portals
         0, 0, /* TODO */    // initialize_first_region_clip
         0,                  // initialize_first_region_clip_resume
-        0, 0, /* TODO */    // mm_setup_material
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
@@ -384,8 +377,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
-        0,                  // mmd_version
-        0,                  // mmd_smatrs
     },
     // ExeDromEd_v126
     {
@@ -396,7 +387,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // explore_portals
         0, 0, /* TODO */    // initialize_first_region_clip
         0,                  // initialize_first_region_clip_resume
-        0, 0, /* TODO */    // mm_setup_material
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
@@ -405,8 +395,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
-        0,                  // mmd_version
-        0,                  // mmd_smatrs
     },
     // ExeThief_v127
     {
@@ -417,17 +405,14 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x000cc0f0UL, 6,    // explore_portals
         0x000cda79UL, 5,    // initialize_first_region_clip
         0x000cda9eUL,       // initialize_first_region_clip_resume
-        0, 0, /* TODO */    // mm_setup_material
-        0, 0, /* TODO */    // mm_hardware_render
-        0, 0, /* TODO */    // mDrawTriangleLists
-        0,                  // mDrawTriangleLists_resume
+        0x0020eaf0UL, 8,    // mm_hardware_render
+        0x0020ce47UL, 6,    // mDrawTriangleLists
+        0x0020ce4fUL,       // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
         0x00460bf0UL,       // portal_camera_pos
-        0,                  // mmd_version
-        0,                  // mmd_smatrs
     },
     // ExeDromEd_v127
     {
@@ -438,7 +423,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x001501e0UL, 6,    // explore_portals
         0x00151d09UL, 5,    // initialize_first_region_clip
         0x00151d2eUL,       // initialize_first_region_clip_resume
-        0x002e9be0UL, 7,    // mm_setup_material
         0x002e9ab0UL, 8,    // mm_hardware_render
         0x002e7a38UL, 6,    // mDrawTriangleLists
         0x002e7a40UL,       // mDrawTriangleLists_resume
@@ -447,8 +431,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
         0x0140216cUL,       // portal_camera_pos
-        0x0172d8b8UL,       // mmd_version
-        0x0172d8b4UL,       // mmd_smatrs
     },
 };
 
@@ -467,7 +449,6 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.explore_portals, base);
     fixup_addr(&GameInfoTable.initialize_first_region_clip, base);
     fixup_addr(&GameInfoTable.initialize_first_region_clip_resume, base);
-    fixup_addr(&GameInfoTable.mm_setup_material, base);
     fixup_addr(&GameInfoTable.mm_hardware_render, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists_resume, base);
@@ -476,16 +457,12 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
     fixup_addr(&GameInfoTable.portal_camera_pos, base);
-    fixup_addr(&GameInfoTable.mmd_version, base);
-    fixup_addr(&GameInfoTable.mmd_smatrs, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
-    t2_mmd_version_ptr = (int*)GameInfoTable.mmd_version;
-    t2_mmd_smatrs_ptr = (void**)GameInfoTable.mmd_smatrs;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
     RESUME_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_resume;
 
@@ -496,7 +473,6 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
     printf("periapt: explore_portals = %08x\n", (unsigned int)GameInfoTable.explore_portals);
     printf("periapt: initialize_first_region_clip = %08x\n", (unsigned int)GameInfoTable.initialize_first_region_clip);
-    printf("periapt: mm_setup_material = %08x\n", (unsigned int)GameInfoTable.mm_setup_material);
     printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
     printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
     printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
@@ -506,8 +482,6 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
     printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
-    printf("periapt: t2_mmd_version_ptr = %08x\n", (unsigned int)t2_mmd_version_ptr);
-    printf("periapt: t2_mmd_smatrs_ptr = %08x\n", (unsigned int)t2_mmd_smatrs_ptr);
     printf("periapt: RESUME_initialize_first_region_clip = %08x\n", (unsigned int)RESUME_initialize_first_region_clip);
 #endif
 }
@@ -760,29 +734,6 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     clip->br = clip->r + clip->b;
 }
 
-// TODO: can drop this one, i think
-extern "C"
-void __cdecl HOOK_mm_setup_material(int index) {
-    /*
-    int version = *t2_mmd_version_ptr;
-    if (version==1) {
-        t2smatr_v1 *mmd_smatrs = *((t2smatr_v1 **)t2_mmd_smatrs_ptr);
-        char *name = mmd_smatrs[index].name;
-        uint32_t handle = mmd_smatrs[index].handle;
-        printf("mm_setup_material(%d): '%16s' 0x%08X\n", index, name, handle); 
-    } else if (version==2) {
-        t2smatr_v2 *mmd_smatrs = *((t2smatr_v2 **)t2_mmd_smatrs_ptr);
-        char *name = mmd_smatrs[index].name;
-        uint32_t handle = mmd_smatrs[index].handle;
-        printf("mm_setup_material(%d): '%16s' 0x%08X\n", index, name, handle); 
-    } else {
-        printf("mm_setup_material(%d): bad version %d\n", index, version); 
-    }
-    */
-
-    ORIGINAL_mm_setup_material(index);
-}
-
 extern "C"
 void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     if (g_Periapt.dualRender
@@ -844,7 +795,6 @@ bool hooked_dark_render_overlays;
 bool hooked_rendobj_render_object;
 bool hooked_explore_portals;
 bool hooked_initialize_first_region_clip;
-bool hooked_mm_setup_material;
 bool hooked_mm_hardware_render;
 bool hooked_mDrawTriangleLists;
 
@@ -885,12 +835,6 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
         (uint32_t)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
-    hooks_spew("Hooking mm_setup_material...\n");
-    install_hook(&hooked_mm_setup_material,
-        (uint32_t)GameInfoTable.mm_setup_material,
-        (uint32_t)&TRAMPOLINE_mm_setup_material,
-        (uint32_t)&BYPASS_mm_setup_material,
-        GameInfoTable.mm_setup_material_preamble);
     hooks_spew("Hooking mm_hardware_render...\n");
     install_hook(&hooked_mm_hardware_render,
         (uint32_t)GameInfoTable.mm_hardware_render,
@@ -942,12 +886,6 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
         (uint32_t)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
-    hooks_spew("Unhooking mm_setup_material...\n");
-    remove_hook(&hooked_mm_setup_material,
-        (uint32_t)GameInfoTable.mm_setup_material,
-        (uint32_t)&TRAMPOLINE_mm_setup_material,
-        (uint32_t)&BYPASS_mm_setup_material,
-        GameInfoTable.mm_setup_material_preamble);
     hooks_spew("Unhooking mm_hardware_render...\n");
     remove_hook(&hooked_mm_hardware_render,
         (uint32_t)GameInfoTable.mm_hardware_render,
