@@ -440,7 +440,6 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x00151d2eUL,       // initialize_first_region_clip_resume
         0x002e9be0UL, 7,    // mm_setup_material
         0x002e9ab0UL, 8,    // mm_hardware_render
-//        0x002e7990UL, 7,    // mDrawTriangleLists
         0x002e7a38UL, 6,    // mDrawTriangleLists
         0x002e7a40UL,       // mDrawTriangleLists_resume
         0x001e4680UL,       // ObjPosGet
@@ -601,9 +600,9 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
 static struct {
     bool isRenderingDual;
     bool dontClearTargetOrStencil;
-    bool isDrawingPeriapt;
+    bool isDrawingOverlays;
     uint32_t stencilOpCounter; // 0: ignore; 1+: read op bit and decrement.
-    uint32_t stencilOp; // bit==0: erase stencil; bit==1: draw into stencil
+    uint32_t stencilOp; // bits, rightmost first. 0: erase stencil; 1: draw into stencil
 } g_State = {};
 
 extern "C"
@@ -623,8 +622,8 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     if (t2_d3d9device_ptr) {
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
-        D3DVIEWPORT9 viewport = {};
-        device->GetViewport(&viewport);
+        // Render this second pass of the world only where the stencil value
+        // is 1.
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILREF, 0x01);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
@@ -633,6 +632,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
         device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
+
         // The original cam_render_scene will clear target+zbuffer+stencil
         // before drawing. We want to keep the previous scene render, so we
         // prevent clearing the target. And we want to keep what we've just
@@ -677,49 +677,21 @@ void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD 
     ORIGINAL_cD8Renderer_Clear(Count, pRects, Flags, Color, Z, Stencil);
 }
 
-static void spew_obj_location(t2id obj, const char *msg) {
-    t2position pos = *(t2_ObjPosGet(obj));
-    printf("obj %d: %0.2f, %0.2f, %0.2f (%s)\n", obj, pos.loc.vec.x, pos.loc.vec.y, pos.loc.vec.z, msg);
-}
-
 extern "C"
 void __cdecl HOOK_dark_render_overlays(void) {
+    g_State.isDrawingOverlays = true;
     ORIGINAL_dark_render_overlays();
-
-/*
-    // Okay, now we want to render an object! How about, um, id... 16? That's the stone head!
-    // We'll move it to 0,0,0 and back again!
-    t2id obj = 16;
-    t2position pos = *(t2_ObjPosGet(obj));
-    t2location loc = {{ 0.0, 0.0, 0.0 }, -1, -1};
-
-    static bool first_time = true;
-    if (first_time) {
-        first_time = false;
-        spew_obj_location(obj, "Starting");
-        CALL_ObjPosSetLocation(obj, &loc);
-        spew_obj_location(obj, "Moved");
-        // FIXME: here
-        // Okay, so this doesn't seem to be rendering anything at all?
-        // Or if it is, _I_ can't see it! Phooey!
-        ORIGINAL_rendobj_render_object(obj, NULL, 0);
-        CALL_ObjPosSetLocation(obj, &pos.loc);
-        spew_obj_location(obj, "Returned");
-    }
-*/
+    g_State.isDrawingOverlays = false;
 }
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
-    // TODO: can probably simplify this by _not_ testing the model name, but
-    //       just evaluating EVERY mesh drawn by dark_render_overlays.
+    // Check if we are rendering the periapt object.
     bool isPeriapt = false;
-    if (g_Periapt.dualRender) {
+    if (g_Periapt.dualRender && g_State.isDrawingOverlays) {
         const char* name = t2_modelname_Get(obj);
-        // printf("rendobj_render_object(%d) [%s]\n", obj, (name ? name : "null"));
         isPeriapt = (name && (stricmp(name, "periaptv") == 0));
     }
-    g_State.isDrawingPeriapt = isPeriapt;
 
     if (isPeriapt && g_State.isRenderingDual) {
         // Skip the viewmodel in the dual pass.
@@ -815,7 +787,7 @@ extern "C"
 void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     if (g_Periapt.dualRender
     && !g_State.isRenderingDual
-    && g_State.isDrawingPeriapt) {
+    && g_State.isDrawingOverlays) {
         char *base = ((char *)m) + m->smatr_off;
         uint32_t size = (m->version==1)? sizeof(t2smatr_v1) : sizeof(t2smatr_v2);
         // Find which materials (if any) is the special one, and write a 1

@@ -306,47 +306,11 @@ _BYPASS_mm_hardware_render:
 
 
 /* ------------------------------------------------------------------------*/
-/*
-# void mDrawTriangleLists(unknown)		# Custom convention, caller cleanup:
-#	void *unknown;				# ESI
-#						# Void return.
-
-	.extern _HOOK_mDrawTriangleLists
-	.global _BYPASS_mDrawTriangleLists
-	.global _ORIGINAL_mDrawTriangleLists
-	.global _TRAMPOLINE_mDrawTriangleLists
-
-_TRAMPOLINE_mDrawTriangleLists:
-	.space	7, 0x90				# preamble
-	.space	5, 0x90				# jmp REMAINDER
-
-_ORIGINAL_mDrawTriangleLists:
-	push	esi
-	mov	esi, dword ptr [esp+8]		# swizzle args to custom convention
-	call	_TRAMPOLINE_mDrawTriangleLists	# call TRAMPOLINE
-	pop	esi
-	ret					#	.
-
-_BYPASS_mDrawTriangleLists:
-	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
-	jz	_TRAMPOLINE_mDrawTriangleLists	#	.
-	push	eax				# preserve registers
-	push	ecx				#	.
-	push	edx				#	.
-	push	esi				# param 0
-	call	_HOOK_mDrawTriangleLists	# call HOOK
-	add	sp, 4				# cleanup
-	pop	edx				# restore registers
-	pop	ecx				#	.
-	pop	eax				#	.
-	ret					#	.
-*/
-
-/* ------------------------------------------------------------------------*/
 
 # in mDrawTriangleLists				# in media res:
-#	int *info;				# EDI (info[2] is element count)
-#	void *
+#						# params to DrawPrimitiveUp()
+#						# have just been pushed onto
+#						# the stack.
 
 	.extern _HOOK_mDrawTriangleLists
 	.global _BYPASS_mDrawTriangleLists
