@@ -656,6 +656,13 @@ void __cdecl HOOK_dark_render_overlays(void) {
     g_State.isDrawingOverlays = true;
     ORIGINAL_dark_render_overlays();
     g_State.isDrawingOverlays = false;
+    // If the viewmodel is not fully on screen, then the stencil ops
+    // will not be counted down and reset correctly. So reset the
+    // the stencil op and state here to ensure no lingering carry-over.
+    g_State.stencilOp = 0;
+    g_State.stencilOpCounter = 0;
+    IDirect3DDevice9* device = *t2_d3d9device_ptr;
+    device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
 }
 
 extern "C"
