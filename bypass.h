@@ -46,4 +46,7 @@ extern const uint32_t BYPASS_mDrawTriangleLists;
 extern const uint32_t TRAMPOLINE_mDrawTriangleLists;
 extern uint32_t RESUME_mDrawTriangleLists;
 
+uint32_t ADDR_ComputeCellForLocation;
+extern int __cdecl CALL_ComputeCellForLocation(t2location* loc);
+
 }

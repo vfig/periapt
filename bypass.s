@@ -298,3 +298,18 @@ _BYPASS_mDrawTriangleLists:
 	call	_HOOK_mDrawTriangleLists	# call HOOK
 	add	sp, 20				# cleanup
 	jmp	dword ptr [_RESUME_mDrawTriangleLists]
+
+
+/* ------------------------------------------------------------------------*/
+
+# int ComputeCellForLocation(loc)		# Custom convention, caller cleanup:
+#	t2location* loc;			# EAX
+#						# EAX return.
+
+	.extern _ADDR_ComputeCellForLocation
+	.global _CALL_ComputeCellForLocation
+
+_CALL_ComputeCellForLocation:
+	mov	eax, dword ptr [esp+0x04]	# swizzle args to custom convention
+	call	dword ptr [_ADDR_ComputeCellForLocation]	# call original
+	ret					#	.

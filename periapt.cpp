@@ -275,6 +275,8 @@ static struct {
 
 // Functions to be called:
 t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
+bool __cdecl (*t2_SphrSphereInWorld)(t2location *center_loc, float radius);
+
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
@@ -351,6 +353,8 @@ struct GameInfo {
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
+    DWORD ComputeCellForLocation;
+    DWORD SphrSphereInWorld;
     // Data to be accessed:
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
@@ -374,6 +378,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
+        0, /* TODO */       // ComputeCellForLocation
+        0, /* TODO */       // SphrSphereInWorld
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
@@ -392,6 +398,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0,                  // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
+        0, /* TODO */       // ComputeCellForLocation
+        0, /* TODO */       // SphrSphereInWorld
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
@@ -410,6 +418,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x0020ce4fUL,       // mDrawTriangleLists_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
+        0x000e06f0UL,       // ComputeCellForLocation
+        0x001cfc60UL,       // SphrSphereInWorld
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
         0x00460bf0UL,       // portal_camera_pos
@@ -428,6 +438,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002e7a40UL,       // mDrawTriangleLists_resume
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
+        0x00170240UL,       // ComputeCellForLocation
+        0x0029f520UL,       // SphrSphereInWorld
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
         0x0140216cUL,       // portal_camera_pos
@@ -454,12 +466,16 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.mDrawTriangleLists_resume, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
+    fixup_addr(&GameInfoTable.ComputeCellForLocation, base);
+    fixup_addr(&GameInfoTable.SphrSphereInWorld, base);
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
     fixup_addr(&GameInfoTable.portal_camera_pos, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
+    ADDR_ComputeCellForLocation = (uint32_t)GameInfoTable.ComputeCellForLocation;
+    t2_SphrSphereInWorld = (bool __cdecl (*)(t2location*,float))GameInfoTable.SphrSphereInWorld;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
@@ -478,7 +494,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
-    printf("periapt: CALL_ObjPosSetLocation = %08x\n", (unsigned int)CALL_ObjPosSetLocation);
+    printf("periapt: ADDR_ComputeCellForLocation = %08x\n", (unsigned int)ADDR_ComputeCellForLocation);
+    printf("periapt: t2_SphrSphereInWorld = %08x\n", (unsigned int)t2_SphrSphereInWorld);
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
     printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
@@ -596,22 +613,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     if (t2_d3d9device_ptr) {
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
-        // Render this second pass of the world only where the stencil value
-        // is 1.
-        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-        device->SetRenderState(D3DRS_STENCILREF, 0x01);
-        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
-        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
-        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
-
-        // The original cam_render_scene will clear target+zbuffer+stencil
-        // before drawing. We want to keep the previous scene render, so we
-        // prevent clearing the target. And we want to keep what we've just
-        // put in the stencil, so we prevent clearing the stencil too.
-        g_State.dontClearTargetOrStencil = true;
 
         // We modify the pos parameter we're given (and later restore it) because
         // CoronaFrame (at least) stores a pointer to the loc! So if we passed
@@ -625,18 +626,54 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // If we move the location, then we ought to cancel the cell+hint metadata:
         pos->loc.cell = -1;
         pos->loc.hint = -1;
+        // And compute the cell and hint for it (must have them for collision testing).
+        CALL_ComputeCellForLocation(&pos->loc);
+        bool isCameraInWorld = (pos->loc.cell != -1);
 
-        // Calling this again might have undesirable side effects; needs research.
-        // Although right now I'm not seeing frobbiness being affected... not a
-        // very conclusive test ofc.
-        g_State.isRenderingDual = true;
-        ORIGINAL_cam_render_scene(pos, zoom);
-        g_State.isRenderingDual = false;
+        // TODO: need to:
+        //       a) make this a much better check. right now it fails when walking
+        //          diagonally along a ruined wall, when the head dips into the wall.
+        //          also right now it doesnt check foot position or anything.
+        //          basically, there is "camera okay" and "player okay", and we
+        //          must only render the dual if camera okay, but also only allow
+        //          translocation if BOTH are okay.
+        //       b) make this validity check result available to scripts so that
+        //          they can enable/disable the translocation and swap out
+        //          the viewmodel for the occluded one.
+        // const float PLAYER_RADIUS = 1.2;
+        // bool isValidPosition = t2_SphrSphereInWorld(&pos->loc, PLAYER_RADIUS);
 
+        if (isCameraInWorld) {
+            // Render this second pass of the world only where the stencil value
+            // is 1.
+            device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+            device->SetRenderState(D3DRS_STENCILREF, 0x01);
+            device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+            device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+            device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+            device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
+            device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
+
+            // The original cam_render_scene will clear target+zbuffer+stencil
+            // before drawing. We want to keep the previous scene render, so we
+            // prevent clearing the target. And we want to keep what we've just
+            // put in the stencil, so we prevent clearing the stencil too.
+            g_State.dontClearTargetOrStencil = true;
+
+            // Calling this again might have undesirable side effects; needs research.
+            // Although right now I'm not seeing frobbiness being affected... not a
+            // very conclusive test ofc.
+            g_State.isRenderingDual = true;
+            ORIGINAL_cam_render_scene(pos, zoom);
+            g_State.isRenderingDual = false;
+            g_State.dontClearTargetOrStencil = false;
+
+            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        }
+
+        // Restore the original position.
         *pos = originalPos;
-
-        g_State.dontClearTargetOrStencil = false;
-        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
     }
 }
 
