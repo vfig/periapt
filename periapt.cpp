@@ -573,8 +573,8 @@ void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t by
 
 static struct {
     bool isRenderingDual;
-    bool dontClearTargetOrStencil;
     bool isDrawingOverlays;
+    bool dontClearTargetOrStencil;
     uint32_t stencilOpCounter; // 0: ignore; 1+: read op bit and decrement.
     uint32_t stencilOp; // bits, rightmost first. 0: erase stencil; 1: draw into stencil
 } g_State = {};
@@ -613,14 +613,11 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // put in the stencil, so we prevent clearing the stencil too.
         g_State.dontClearTargetOrStencil = true;
 
-        // And render the reverse view.
-
         // We modify the pos parameter we're given (and later restore it) because
         // CoronaFrame (at least) stores a pointer to the loc! So if we passed
         // in a local variable, that would end up pointing to random stack gibberish.
         // It might not matter--I don't know--but safer not to risk it.
         t2position originalPos = *pos;
-
         // Move the camera into the otherworld:
         pos->loc.vec.x += g_Periapt.dualOffset.x;
         pos->loc.vec.y += g_Periapt.dualOffset.y;
@@ -653,18 +650,16 @@ void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD 
 
 extern "C"
 void __cdecl HOOK_dark_render_overlays(void) {
+    // Just don't render overlays in the dual view.
+    if (g_State.isRenderingDual)
+        return;
+
     g_State.isDrawingOverlays = true;
     ORIGINAL_dark_render_overlays();
     g_State.isDrawingOverlays = false;
-    // If the viewmodel is not fully on screen, then the stencil ops
-    // will not be counted down and reset correctly. So reset the
-    // the stencil op and state here to ensure no lingering carry-over.
-    g_State.stencilOp = 0;
-    g_State.stencilOpCounter = 0;
-    IDirect3DDevice9* device = *t2_d3d9device_ptr;
-    device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
 }
 
+// TODO: we can ditch this hook -- we just skip rendering overlays in the dual instead.
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     // Check if we are rendering the periapt object.
@@ -707,7 +702,8 @@ void __cdecl HOOK_explore_portals(t2portalcell* cell) {
         float dot = center.x*look.x + center.y*look.y + center.z*look.z;
         // Find the distance to the near edge of the cell's bounding sphere.
         float cell_near_dist = dot - cell->sphere_radius;
-        if (cell_near_dist > g_Periapt.depthCullDistance) return;
+        if (cell_near_dist > g_Periapt.depthCullDistance)
+            return;
     }
 
     ORIGINAL_explore_portals(cell);
@@ -717,19 +713,18 @@ extern "C"
 void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     int l=0, r=w, t=0, b=h;
 
-    if (g_Periapt.dualCull) {
-        if (g_State.isRenderingDual) {
-            // Adjust the portal clipping rectangle for the second render pass.
-            // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
-            // but for the second pass we want to only include portals that would
-            // be rendered in the periapt viewmodel.
-            //
-            // For now, let's just say "draw the right half of the screen only":
-            l = (int)(w*g_Periapt.dualCullLeft);
-            r = (int)(w*g_Periapt.dualCullRight);
-            t = (int)(h*g_Periapt.dualCullTop);
-            b = (int)(h*g_Periapt.dualCullBottom);
-        }
+    if (g_State.isRenderingDual
+    && g_Periapt.dualCull) {
+        // Adjust the portal clipping rectangle for the second render pass.
+        // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
+        // but for the second pass we want to only include portals that would
+        // be rendered in the periapt viewmodel.
+        //
+        // For now, let's just say "draw the right half of the screen only":
+        l = (int)(w*g_Periapt.dualCullLeft);
+        r = (int)(w*g_Periapt.dualCullRight);
+        t = (int)(h*g_Periapt.dualCullTop);
+        b = (int)(h*g_Periapt.dualCullBottom);
     }
     clip->l = l<<16;
     clip->t = t<<16;
@@ -743,9 +738,9 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
 
 extern "C"
 void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
-    if (g_Periapt.dualRender
-    && !g_State.isRenderingDual
-    && g_State.isDrawingOverlays) {
+    if (g_State.isDrawingOverlays
+    && g_Periapt.dualRender
+    && !g_State.isRenderingDual) {
         char *base = ((char *)m) + m->smatr_off;
         uint32_t size = (m->version==1)? sizeof(t2smatr_v1) : sizeof(t2smatr_v2);
         // Find which materials (if any) is the special one, and write a 1
@@ -767,11 +762,14 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
 extern "C"
 int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
-
-    if (g_State.stencilOpCounter) {
+    if (g_State.isDrawingOverlays
+    && g_Periapt.dualRender
+    && !g_State.isRenderingDual
+    && g_State.stencilOpCounter) {
         // Get the stencil op for this draw
         uint32_t op = g_State.stencilOp & 1;
         g_State.stencilOp >>= 1;
+        --g_State.stencilOpCounter;
         // Apply it
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
@@ -780,13 +778,11 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILPASS, op ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
+        device->SetRenderState(D3DRS_STENCILPASS,
+            op ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
         HRESULT result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
             pVertexStreamZeroData, VertexStreamZeroStride);
-        // Disable stencil ops when the last one was done.
-        if (--g_State.stencilOpCounter==0) {
-            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-        }
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
         return result;
     } else {
         return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
