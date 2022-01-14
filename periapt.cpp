@@ -281,6 +281,7 @@ bool __cdecl (*t2_SphrSphereInWorld)(t2location *center_loc, float radius);
 IDirect3DDevice9 **t2_d3d9device_ptr;
 void *t2_modelnameprop_ptr;
 t2position *t2_portal_camera_pos_ptr;
+t2cachedmaterial *t2_matcache_ptr;
 
 struct t2_modelname_vtable {
     DWORD reserved0;
@@ -359,6 +360,7 @@ struct GameInfo {
     DWORD d3d9device_ptr;
     DWORD modelnameprop;
     DWORD portal_camera_pos;
+    DWORD matcache;
 };
 
 static GameInfo GameInfoTable = {};
@@ -383,6 +385,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x005d8118UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
+        0,                  // matcache
     },
     // ExeDromEd_v126
     {
@@ -403,6 +406,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x016e7b50UL,       // d3d9device_ptr
         0,                  // modelnameprop
         0,                  // portal_camera_pos
+        0,                  // matcache
     },
     // ExeThief_v127
     {
@@ -423,6 +427,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
         0x00460bf0UL,       // portal_camera_pos
+        0,                  // matcache
     },
     // ExeDromEd_v127
     {
@@ -443,6 +448,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x016ebce0UL,       // d3d9device_ptr
         0x016e0f84UL,       // modelnameprop
         0x0140216cUL,       // portal_camera_pos
+        0x01660ba0UL,       // matcache
     },
 };
 
@@ -471,6 +477,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.d3d9device_ptr, base);
     fixup_addr(&GameInfoTable.modelnameprop, base);
     fixup_addr(&GameInfoTable.portal_camera_pos, base);
+    fixup_addr(&GameInfoTable.matcache, base);
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
@@ -479,6 +486,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
+    t2_matcache_ptr = (t2cachedmaterial*)GameInfoTable.matcache;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
     RESUME_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_resume;
 
@@ -489,6 +497,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: rendobj_render_object = %08x\n", (unsigned int)GameInfoTable.rendobj_render_object);
     printf("periapt: explore_portals = %08x\n", (unsigned int)GameInfoTable.explore_portals);
     printf("periapt: initialize_first_region_clip = %08x\n", (unsigned int)GameInfoTable.initialize_first_region_clip);
+    printf("periapt: initialize_first_region_clip_resume = %08x\n", (unsigned int)GameInfoTable.initialize_first_region_clip_resume);
     printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
     printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
     printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
@@ -499,7 +508,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
     printf("periapt: t2_modelnameprop_ptr = %08x\n", (unsigned int)t2_modelnameprop_ptr);
     printf("periapt: t2_portal_camera_pos_ptr = %08x\n", (unsigned int)t2_portal_camera_pos_ptr);
-    printf("periapt: RESUME_initialize_first_region_clip = %08x\n", (unsigned int)RESUME_initialize_first_region_clip);
+    printf("periapt: t2_matcache_ptr = %08x\n", (unsigned int)t2_matcache_ptr);
 #endif
 }
 
@@ -592,8 +601,8 @@ static struct {
     bool isRenderingDual;
     bool isDrawingOverlays;
     bool dontClearTargetOrStencil;
-    uint32_t stencilOpCounter; // 0: ignore; 1+: read op bit and decrement.
-    uint32_t stencilOp; // bits, rightmost first. 0: erase stencil; 1: draw into stencil
+    bool dontDrawViewmodel;
+    IDirect3DBaseTexture9 *renderToStencilForThisOne;
 } g_State = {};
 
 extern "C"
@@ -779,16 +788,36 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     && g_Periapt.dualRender
     && !g_State.isRenderingDual) {
         char *base = ((char *)m) + m->smatr_off;
-        uint32_t size = (m->version==1)? sizeof(t2smatr_v1) : sizeof(t2smatr_v2);
-        // Find which materials (if any) is the special one, and write a 1
-        // bit into the stencil op for it.
-        g_State.stencilOp = 0;
-        g_State.stencilOpCounter = 0;
+        // Find which material (if any) is the special one, and keep track of
+        // its texture.
+        g_State.renderToStencilForThisOne = NULL;
+        g_State.dontDrawViewmodel = false;
         for (int i=0; i<m->smatrs; ++i) {
-            char *name = (base+i*size);
-            ++g_State.stencilOpCounter;
+            char *name;
+            uint32_t handle;
+            if (m->version==1) {
+                t2smatr_v1 *smatrs = (t2smatr_v1*)base;
+                name = smatrs[i].name;
+                handle = smatrs[i].handle;
+            } else {
+                t2smatr_v2 *smatrs = (t2smatr_v2*)base;
+                name = smatrs[i].name;
+                handle = smatrs[i].handle;
+            }
+
             if (stricmp(name, "pericry1.png")==0) {
-                g_State.stencilOp |= (1UL << i);
+                // This is the one.
+                if (handle) {
+                    int32_t i = ((t2material*)handle)->cache_index;
+                    if (i>=0 && i<65536) {
+                        g_State.renderToStencilForThisOne = t2_matcache_ptr[i].d3d_texture;
+                    } else {
+                        // The 'cache_index' is a pointer to something else before the
+                        // texture is loaded in to d3d. This seems to be for just the
+                        // first frame. So skip drawing it entirely!
+                        g_State.dontDrawViewmodel = true;
+                    }
+                }
             }
         }
     }
@@ -801,13 +830,29 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
     if (g_State.isDrawingOverlays
     && g_Periapt.dualRender
-    && !g_State.isRenderingDual
-    && g_State.stencilOpCounter) {
-        // Get the stencil op for this draw
-        uint32_t op = g_State.stencilOp & 1;
-        g_State.stencilOp >>= 1;
-        --g_State.stencilOpCounter;
-        // Apply it
+    && !g_State.isRenderingDual) {
+        if (g_State.dontDrawViewmodel) {
+            return S_OK;
+        }
+
+        IDirect3DBaseTexture9 *texture = NULL;
+        device->GetTexture(0, &texture);
+        int renderToStencil = (texture==g_State.renderToStencilForThisOne);
+
+        // Force alpha clip instead of alpha blend.
+        DWORD alphaBlend = 0;
+        DWORD alphaTest = 0;
+        DWORD alphaRef = 0;
+        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
+        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
+        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
+        if (alphaBlend) {
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+            device->SetRenderState(D3DRS_ALPHAREF, 127);
+        }
+
+        // Render appropriately to the stencil.
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
         device->SetRenderState(D3DRS_STENCILREF, 0x1);
@@ -816,10 +861,17 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILPASS,
-            op ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
+            renderToStencil ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
         HRESULT result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
             pVertexStreamZeroData, VertexStreamZeroStride);
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+
+        // Restore alpha blend and alpha test state.
+        if (alphaBlend) {
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
+            device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
+        }
         return result;
     } else {
         return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,

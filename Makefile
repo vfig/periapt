@@ -30,6 +30,7 @@
 
 srcdir = .
 
+DEBUG = 1
 GAME = 2
 
 LGDIR = liblg

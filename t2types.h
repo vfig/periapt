@@ -97,3 +97,18 @@ typedef struct t2smatr_v2 {
     uint16_t weight_start;
     uint16_t pad1;
 } t2smatr_v2; /* 56 bytes */
+
+typedef struct t2material {
+    int32_t cache_index;
+    /* i dont care about the rest */
+} t2material;
+
+typedef struct t2cachedmaterial {
+    IDirect3DBaseTexture9 *d3d_texture;
+    uint32_t pad0;
+    uint32_t handle; // t2material*
+    uint8_t pad1;
+    uint8_t pad2;
+    uint8_t pad3; // seems to be flags, but i dont care.
+    uint8_t pad4;
+} t2cachedmaterial;
