@@ -831,28 +831,29 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     if (g_State.isDrawingOverlays
     && g_Periapt.dualRender
     && !g_State.isRenderingDual) {
+        // TODO: i think dontDrawViewmodel can go; the intro to the thing should
+        //       be fading in the otherworld view anyway, and that can wait to
+        //       begin until we have the d3d texture pointer.
         if (g_State.dontDrawViewmodel) {
             return S_OK;
         }
 
         IDirect3DBaseTexture9 *texture = NULL;
         device->GetTexture(0, &texture);
-        int renderToStencil = (texture==g_State.renderToStencilForThisOne);
+        int isTheCrystal = (texture==g_State.renderToStencilForThisOne);
+        HRESULT result;
 
-        // Force alpha clip instead of alpha blend.
-        DWORD alphaBlend = 0;
-        DWORD alphaTest = 0;
-        DWORD alphaRef = 0;
-        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
-        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
-        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
-        if (alphaBlend) {
-            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-            device->SetRenderState(D3DRS_ALPHAREF, 127);
-        }
+        // We want to clear the stencil for all the non-crystal parts of the
+        // periapt. Particularly for the chain and filigree, this allows them
+        // to be visible in front of the dual view.
+        //
+        // For the crystal, we want to draw it twice. The first time opaquely
+        // and clearing the stencil. The second time with alpha testing and
+        // clearing the stencil, so the dual view is limited to the areas where
+        // the alpha test passes. We can then modulate the dual view appearing
+        // or disappearing by changing the alpha test threshold.
 
-        // Render appropriately to the stencil.
+        // Set up the stencil rendering.
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
         device->SetRenderState(D3DRS_STENCILREF, 0x1);
@@ -860,18 +861,62 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILPASS,
-            renderToStencil ? D3DSTENCILOP_REPLACE : D3DSTENCILOP_ZERO);
-        HRESULT result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-            pVertexStreamZeroData, VertexStreamZeroStride);
-        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+
+        // Save the current alpha blend and alpha test state.
+        DWORD alphaBlend = 0;
+        DWORD alphaTest = 0;
+        DWORD alphaRef = 0;
+        DWORD alphaFunc = 0;
+        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
+        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
+        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
+        device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
+
+        if (isTheCrystal) {
+            // Draw the crystal opaquely, clearing the stencil
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+                pVertexStreamZeroData, VertexStreamZeroStride);
+
+            // TODO: allow the alpha threshold (or at least changes to it) to
+            //       be driven by script. For now, this will do to let me do
+            //       the art bits.
+            static uint32_t frameCounter;
+            int a = (int)((frameCounter<<3)&0x1FF);
+            int threshold = (a<256 ? a : (511-a));
+            ++frameCounter;
+
+            // Draw it again, alpha tested, setting the stencil
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+            device->SetRenderState(D3DRS_ALPHAREF, threshold);
+            device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
+            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+                pVertexStreamZeroData, VertexStreamZeroStride);
+        } else {
+            // Clear the stencil with this part.
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
+            if (alphaBlend) {
+                // Force alpha clip instead of alpha blend.
+                device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+                device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+                device->SetRenderState(D3DRS_ALPHAREF, 127);
+            }
+            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+                pVertexStreamZeroData, VertexStreamZeroStride);
+        }
 
         // Restore alpha blend and alpha test state.
-        if (alphaBlend) {
-            device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
-            device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
-        }
+        device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
+        device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
+        device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
+
+        // Disable stencil rendering again.
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+
         return result;
     } else {
         return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
