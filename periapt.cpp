@@ -601,8 +601,12 @@ static struct {
     bool isRenderingDual;
     bool isDrawingOverlays;
     bool dontClearTargetOrStencil;
-    bool dontDrawViewmodel;
-    IDirect3DBaseTexture9 *renderToStencilForThisOne;
+    bool readyToDrawViewmodel;
+    int drawCallIndex;
+    IDirect3DBaseTexture9 *crystalTexture;
+    IDirect3DBaseTexture9 *overlayTexture;
+    IDirect3DBaseTexture9 *part1Texture;
+    IDirect3DBaseTexture9 *part2Texture;
 } g_State = {};
 
 extern "C"
@@ -788,10 +792,11 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     && g_Periapt.dualRender
     && !g_State.isRenderingDual) {
         char *base = ((char *)m) + m->smatr_off;
-        // Find which material (if any) is the special one, and keep track of
-        // its texture.
-        g_State.renderToStencilForThisOne = NULL;
-        g_State.dontDrawViewmodel = false;
+        // Find the textures for all parts of the periapt.
+        g_State.crystalTexture = NULL;
+        g_State.overlayTexture = NULL;
+        g_State.part1Texture = NULL;
+        g_State.part2Texture = NULL;
         for (int i=0; i<m->smatrs; ++i) {
             char *name;
             uint32_t handle;
@@ -805,22 +810,34 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
                 handle = smatrs[i].handle;
             }
 
-            if (stricmp(name, "pericry1.png")==0) {
-                // This is the one.
-                if (handle) {
-                    int32_t i = ((t2material*)handle)->cache_index;
-                    if (i>=0 && i<65536) {
-                        g_State.renderToStencilForThisOne = t2_matcache_ptr[i].d3d_texture;
-                    } else {
-                        // The 'cache_index' is a pointer to something else before the
-                        // texture is loaded in to d3d. This seems to be for just the
-                        // first frame. So skip drawing it entirely!
-                        g_State.dontDrawViewmodel = true;
+            if (handle) {
+                int32_t i = ((t2material*)handle)->cache_index;
+                // The 'cache_index' is a pointer to something else before the
+                // texture is loaded in to d3d. I am guessing at the range of
+                // cached material handles here, but certainly no pointer will
+                // be in this range!
+                if (i>=0 && i<65536) {
+                    IDirect3DBaseTexture9 *tex = t2_matcache_ptr[i].d3d_texture;
+                    if (stricmp(name, "pericry1.png")==0) {
+                        g_State.crystalTexture = tex;
+                    } else if (stricmp(name, "pericry2.png")==0) {
+                        g_State.overlayTexture = tex;
+                    } else if (stricmp(name, "peri1.png")==0) {
+                        g_State.part1Texture = tex;
+                    } else if (stricmp(name, "peri2.png")==0) {
+                        g_State.part2Texture = tex;
                     }
                 }
             }
         }
     }
+
+    // We don't want to do any drawing into the stencil until all textures
+    // are ready and loaded into the cache.
+    g_State.readyToDrawViewmodel =
+        (g_State.crystalTexture && g_State.overlayTexture
+        && g_State.part1Texture && g_State.part2Texture);
+    g_State.drawCallIndex = 0;
     
     ORIGINAL_mm_hardware_render(m);
 }
@@ -828,20 +845,15 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
 extern "C"
 int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
-    if (g_State.isDrawingOverlays
+    if (g_State.readyToDrawViewmodel
+    && g_State.isDrawingOverlays
     && g_Periapt.dualRender
     && !g_State.isRenderingDual) {
-        // TODO: i think dontDrawViewmodel can go; the intro to the thing should
-        //       be fading in the otherworld view anyway, and that can wait to
-        //       begin until we have the d3d texture pointer.
-        if (g_State.dontDrawViewmodel) {
-            return S_OK;
-        }
-
+        HRESULT result;
         IDirect3DBaseTexture9 *texture = NULL;
         device->GetTexture(0, &texture);
-        int isTheCrystal = (texture==g_State.renderToStencilForThisOne);
-        HRESULT result;
+        int isTheCrystal = (texture==g_State.crystalTexture);
+        int isTheOverlay = (texture==g_State.overlayTexture);
 
         // We want to clear the stencil for all the non-crystal parts of the
         // periapt. Particularly for the chain and filigree, this allows them
@@ -852,6 +864,31 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         // clearing the stencil, so the dual view is limited to the areas where
         // the alpha test passes. We can then modulate the dual view appearing
         // or disappearing by changing the alpha test threshold.
+        //
+        // For the overlay, we want to ignore its actual vertex data, and
+        // render our own, full screen. It should not... figure this out later!
+
+        // TODO: allow the alpha threshold (or at least changes to it) to
+        //       be driven by script. For now, this will do to let me do
+        //       the art bits.
+        static uint32_t frameCounter;
+        float time = (float)(frameCounter&0x3FF)/255.0f;
+        printf("frame: %u, time: %f\n", frameCounter, time);
+        ++frameCounter;
+
+        // Save the current alpha blend, alpha test, and z state.
+        DWORD alphaBlend = 0;
+        DWORD alphaTest = 0;
+        DWORD alphaRef = 0;
+        DWORD alphaFunc = 0;
+        DWORD zEnable = 0;
+        DWORD zFunc = 0;
+        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
+        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
+        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
+        device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
+        device->GetRenderState(D3DRS_ZWRITEENABLE, &zEnable);
+        device->GetRenderState(D3DRS_ZFUNC, &zFunc);
 
         // Set up the stencil rendering.
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
@@ -862,16 +899,81 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
 
-        // Save the current alpha blend and alpha test state.
-        DWORD alphaBlend = 0;
-        DWORD alphaTest = 0;
-        DWORD alphaRef = 0;
-        DWORD alphaFunc = 0;
-        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
-        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
-        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
-        device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
+        // TODO: maybe add a flag as to whether we bother drawing this overlay
+        //       at all?
+        if (g_State.drawCallIndex==0) {
+            // Draw a full screen quad with the overlay texture, for world
+            // transitions.
 
+            // Get the render target size.
+            IDirect3DSurface9* surface = NULL;
+            D3DSURFACE_DESC surfaceDesc = {};
+            device->GetRenderTarget(0, &surface);
+            surface->GetDesc(&surfaceDesc);
+
+            // FVF is D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1
+            // so we just match that.
+            struct vertex {
+                float x,y,z,w;
+                D3DCOLOR diffuse;
+                D3DCOLOR specular;
+                float u,v;
+            } __attribute__((aligned(4)));
+            struct vertex overlayVertices[4];
+            for (int i=0; i<4; ++i) {
+                if (i&1) {
+                    overlayVertices[i].x = (float)surfaceDesc.Width+0.5f;
+                    overlayVertices[i].u = 1.0f;
+                } else {
+                    overlayVertices[i].x = 0.5f;
+                    overlayVertices[i].u = 0.0f;
+                }
+                if (i&2) {
+                    overlayVertices[i].y = (float)surfaceDesc.Height+0.5f;
+                    overlayVertices[i].v = 1.0f;
+                } else {
+                    overlayVertices[i].y = 0.5f;
+                    overlayVertices[i].v = 0.0f;
+                }
+                overlayVertices[i].z = 0.0f; // TODO: ??? is this necessarily z-reversed, or what?
+                overlayVertices[i].w = 1.0f;
+                overlayVertices[i].diffuse = D3DCOLOR_COLORVALUE(1.0,1.0,1.0,1.0);
+                overlayVertices[i].specular = D3DCOLOR_COLORVALUE(0.0,0.0,0.0,1.0);
+            }
+
+            int threshold;
+            if (time>=1.0f && time<2.0f) {
+                threshold = (int)((time-1.0f)*255.0f);
+            } else if (time>=2.0f && time<3.0f) {
+                threshold = (int)((1.0f-(time-2.0f))*255.0f);
+            } else {
+                threshold = 0;
+            }
+
+            // Draw the overlay, alpha tested, not z tested, setting the stencil
+            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+            device->SetRenderState(D3DRS_ALPHAREF, threshold);
+            device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
+            device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            device->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
+            device->SetTexture(0, g_State.overlayTexture);
+
+            result = device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2,
+                overlayVertices, sizeof(struct vertex));
+
+            // Restore alpha blend, alpha test, z state, and texture.
+            device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
+            device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
+            device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
+            device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
+            device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
+            device->SetRenderState(D3DRS_ZFUNC, zFunc);
+            device->SetTexture(0, texture);
+        }
+
+        // Now draw this part of the periapt
         if (isTheCrystal) {
             // Draw the crystal opaquely, clearing the stencil
             device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
@@ -880,13 +982,14 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
             result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
                 pVertexStreamZeroData, VertexStreamZeroStride);
 
-            // TODO: allow the alpha threshold (or at least changes to it) to
-            //       be driven by script. For now, this will do to let me do
-            //       the art bits.
-            static uint32_t frameCounter;
-            int a = (int)((frameCounter<<3)&0x1FF);
-            int threshold = (a<256 ? a : (511-a));
-            ++frameCounter;
+            int threshold;
+            if (time>=0.0f && time<1.0f) {
+                threshold = (int)(time*255.0f);
+            } else if (time>=3.0f && time<4.0f) {
+                threshold = (int)((1.0f-(time-3.0f))*255.0f);
+            } else {
+                threshold = 255;
+            }
 
             // Draw it again, alpha tested, setting the stencil
             device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
@@ -895,6 +998,10 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
             device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
             result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
                 pVertexStreamZeroData, VertexStreamZeroStride);
+        } else if (isTheOverlay) {
+            // Don't bother drawing it, it only exists to get the game to load
+            // the texture for us.
+            result = S_OK;
         } else {
             // Clear the stencil with this part.
             device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
@@ -908,7 +1015,7 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
                 pVertexStreamZeroData, VertexStreamZeroStride);
         }
 
-        // Restore alpha blend and alpha test state.
+        // Restore alpha blend, alpha test, and z state.
         device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
         device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
         device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
@@ -916,6 +1023,8 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
 
         // Disable stencil rendering again.
         device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+
+        ++g_State.drawCallIndex;
 
         return result;
     } else {
