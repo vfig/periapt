@@ -612,94 +612,240 @@ static struct {
     IDirect3DBaseTexture9 *part2Texture;
 } g_State = {};
 
+// FVF is hardcoded as D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1
+// for the viewmodel, so we just use that layout here.
+struct PrimVertex {
+    float x,y,z,w;
+    D3DCOLOR diffuse;
+    D3DCOLOR specular;
+    float u,v;
+} __attribute__((aligned(4)));
+// We save transformed vertices here every frame, so we can draw it our way.
+#define PERIAPT_PART_COUNT  4
+#define PERIAPT_CRYSTAL 0
+#define PERIAPT_PART_1  1
+#define PERIAPT_PART_2  2
+#define PERIAPT_IGNORE  -1
+#define PERIAPT_VERTEX_COUNT  768
+static struct PrimVertex PeriaptVertex[PERIAPT_VERTEX_COUNT];
+static int PeriaptVertexIndex;
+static UINT PeriaptPrimitiveCount[3];
+static int PeriaptPrimitiveStart[3];
+// The overlay is a full-screen quad.
+#define OVERLAY_VERTEX_COUNT  4
+static struct PrimVertex OverlayVertex[3*OVERLAY_VERTEX_COUNT];
+static UINT OverlayPrimitiveCount;
+
+
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
-    // TODO: for developing the transition, we are always transitioning
-    // g_State.isTransitioning = TRUE;
-
-    // if (g_State.isTransitioning) {
-    //     g_State.dontClearTarget = false;
-    //     g_State.dontClearStencil = true;
-    // } else {
-        g_State.dontClearTarget = false;
-        g_State.dontClearStencil = false;
-    // }
-
-    // Render the scene normally.
-    ORIGINAL_cam_render_scene(pos, zoom);
-    if (!g_Periapt.dualRender) return;
-
+    IDirect3DDevice9* device = *t2_d3d9device_ptr;
+    assert(device);
 #if HOOKS_SPEW
     static bool spewed = false;
     if (! spewed) {
         spewed = true;
-        printf("periapt: t2_d3d9device_ptr = %08x\n", (unsigned int)t2_d3d9device_ptr);
-        if (t2_d3d9device_ptr) printf("periapt: d3d9device = %08x\n", (unsigned int)(*t2_d3d9device_ptr));
+        printf("periapt: d3d9device = %08x\n", (unsigned int)(*t2_d3d9device_ptr));
     }
 #endif
 
-    if (t2_d3d9device_ptr) {
-        IDirect3DDevice9* device = *t2_d3d9device_ptr;
+    // TODO: allow the alpha threshold (or at least changes to it) to
+    //       be driven by script. For now, this will do to let me do
+    //       the art bits.
+    static uint32_t frameCounter;
+    float time = (float)(frameCounter%180)/60.0f;
+    ++frameCounter;
 
-        // We modify the pos parameter we're given (and later restore it) because
-        // CoronaFrame (at least) stores a pointer to the loc! So if we passed
-        // in a local variable, that would end up pointing to random stack gibberish.
-        // It might not matter--I don't know--but safer not to risk it.
-        t2position originalPos = *pos;
-        // Move the camera into the otherworld:
-        pos->loc.vec.x += g_Periapt.dualOffset.x;
-        pos->loc.vec.y += g_Periapt.dualOffset.y;
-        pos->loc.vec.z += g_Periapt.dualOffset.z;
-        // If we move the location, then we ought to cancel the cell+hint metadata:
-        pos->loc.cell = -1;
-        pos->loc.hint = -1;
-        // And compute the cell and hint for it (must have them for collision testing).
-        CALL_ComputeCellForLocation(&pos->loc);
-        bool isCameraInWorld = (pos->loc.cell != -1);
+    // TODO: for developing the transition, we are always transitioning
+    g_State.isTransitioning = g_State.readyToDrawViewmodel;
 
-        // TODO: need to:
-        //       a) make this a much better check. right now it fails when walking
-        //          diagonally along a ruined wall, when the head dips into the wall.
-        //          also right now it doesnt check foot position or anything.
-        //          basically, there is "camera okay" and "player okay", and we
-        //          must only render the dual if camera okay, but also only allow
-        //          translocation if BOTH are okay.
-        //       b) make this validity check result available to scripts so that
-        //          they can enable/disable the translocation and swap out
-        //          the viewmodel for the occluded one.
-        // const float PLAYER_RADIUS = 1.2;
-        // bool isValidPosition = t2_SphrSphereInWorld(&pos->loc, PLAYER_RADIUS);
+    // TODO - this should be global state, so it can drive more things
+    float t = time/3.0f;
+    int gap = 64;
+    int threshold = (int)(t*(255.0f+gap));
+    int innerThreshold = threshold-gap;
+    if (innerThreshold<0) innerThreshold = 0;
+    if (innerThreshold>255) innerThreshold = 255;
+    int outerThreshold = threshold;
+    if (outerThreshold<0) outerThreshold = 0;
+    if (outerThreshold>255) outerThreshold = 255;
 
-        if (isCameraInWorld) {
-            // Render this second pass of the world only where the stencil value
-            // is 1.
-            device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-            device->SetRenderState(D3DRS_STENCILREF, 0x01);
-            device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
-            device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-            device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-            device->SetRenderState(D3DRS_STENCILMASK, 0xFFFFFFFF);
-            device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFFFFFFFF);
-
-            // The original cam_render_scene will clear target+zbuffer+stencil
-            // before drawing. We want to keep the previous scene render, so we
-            // prevent clearing the target. And we want to keep what we've just
-            // put in the stencil, so we prevent clearing the stencil too.
-            g_State.dontClearTarget = true;
-            g_State.dontClearStencil = true;
-
-            // Calling this again might have undesirable side effects; needs research.
-            // Although right now I'm not seeing frobbiness being affected... not a
-            // very conclusive test ofc.
-            g_State.isRenderingDual = true;
-            ORIGINAL_cam_render_scene(pos, zoom);
-            g_State.isRenderingDual = false;
-            g_State.dontClearTarget = false;
-            g_State.dontClearStencil = false;
-
-            device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+    if (g_State.isTransitioning) {
+        // Set up the overlay to be a full screen quad.
+        OverlayPrimitiveCount = 2;
+        IDirect3DSurface9* surface = NULL;
+        D3DSURFACE_DESC surfaceDesc = {};
+        device->GetRenderTarget(0, &surface);
+        surface->GetDesc(&surfaceDesc);
+        for (int i=0; i<OVERLAY_VERTEX_COUNT; ++i) {
+            if (i&1) {
+                OverlayVertex[i].x = (float)surfaceDesc.Width+0.5f;
+                OverlayVertex[i].u = 1.0f;
+            } else {
+                OverlayVertex[i].x = 0.5f;
+                OverlayVertex[i].u = 0.0f;
+            }
+            if (i&2) {
+                OverlayVertex[i].y = (float)surfaceDesc.Height+0.5f;
+                OverlayVertex[i].v = 1.0f;
+            } else {
+                OverlayVertex[i].y = 0.5f;
+                OverlayVertex[i].v = 0.0f;
+            }
+            OverlayVertex[i].z = 0.0f;
+            OverlayVertex[i].w = 1.0f;
+            OverlayVertex[i].diffuse = D3DCOLOR_COLORVALUE(1.0,1.0,1.0,1.0);
+            OverlayVertex[i].specular = D3DCOLOR_COLORVALUE(0.0,0.0,0.0,1.0);
         }
+        g_State.dontClearTarget = true;
+        g_State.dontClearStencil = true;
+
+        // We don't want cam_render_scene to clear the stencil buffer later, so
+        // we need to do it now.
+        device->Clear(0, NULL, D3DCLEAR_STENCIL, 0, 0, 0);
+
+        // Save the current renderer state.
+        DWORD alphaBlend = 0;
+        DWORD alphaTest = 0;
+        DWORD alphaRef = 0;
+        DWORD alphaFunc = 0;
+        DWORD zEnable = 0;
+        DWORD zFunc = 0;
+        IDirect3DBaseTexture9 *texture;
+        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
+        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
+        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
+        device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
+        device->GetRenderState(D3DRS_ZWRITEENABLE, &zEnable);
+        device->GetRenderState(D3DRS_ZFUNC, &zFunc);
+        device->GetTexture(0, &texture);
+        // TODO -- do we need to do FVF here? probably!
+
+        // Don't z test or z write.
+        device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        device->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
+        // First pass: just render opaquely.
+        device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        device->SetTexture(0, g_State.overlayTexture);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
+            OverlayVertex, sizeof(struct PrimVertex));
+        // Second pass: render the inner circle to stencil 2
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+        device->SetRenderState(D3DRS_ALPHAREF, innerThreshold);
+        device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILMASK, 0xFF);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFF);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+        device->SetRenderState(D3DRS_STENCILREF, 0x02);
+        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+        device->SetTexture(0, g_State.overlayTexture);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
+            OverlayVertex, sizeof(struct PrimVertex));
+        // Third time's the charm: render the outer circle to stencil 1
+        device->SetRenderState(D3DRS_ALPHAREF, outerThreshold);
+        device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
+        device->SetRenderState(D3DRS_STENCILREF, 0x01);
+        device->SetTexture(0, g_State.overlayTexture);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
+            OverlayVertex, sizeof(struct PrimVertex));
+
+        // Restore renderer state
+        device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
+        device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
+        device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
+        device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
+        device->SetRenderState(D3DRS_ZFUNC, zFunc);
+        device->SetTexture(0, texture);
+
+        // Render the world only where the stencil value is 2.
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILREF, 0x02);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+    } else {
+        g_State.dontClearTarget = false;
+        g_State.dontClearStencil = false;
+    }
+
+    ORIGINAL_cam_render_scene(pos, zoom);
+
+    if (g_State.isTransitioning) {
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+    }
+
+    // We only need to render the second pass if we're transitioning or the
+    // periapt is up.
+    if (!g_Periapt.dualRender
+    && !g_State.isTransitioning)
+        return;
+
+    // We modify the pos parameter we're given (and later restore it) because
+    // CoronaFrame (at least) stores a pointer to the loc! So if we passed
+    // in a local variable, that would end up pointing to random stack gibberish.
+    // It might not matter--I don't know--but safer not to risk it.
+    t2position originalPos = *pos;
+    // Move the camera into the otherworld:
+    pos->loc.vec.x += g_Periapt.dualOffset.x;
+    pos->loc.vec.y += g_Periapt.dualOffset.y;
+    pos->loc.vec.z += g_Periapt.dualOffset.z;
+    // If we move the location, then we ought to cancel the cell+hint metadata:
+    pos->loc.cell = -1;
+    pos->loc.hint = -1;
+    // And compute the cell and hint for it (must have them for collision testing).
+    CALL_ComputeCellForLocation(&pos->loc);
+    bool isCameraInWorld = (pos->loc.cell != -1);
+
+    // TODO: need to:
+    //       a) make this a much better check. right now it fails when walking
+    //          diagonally along a ruined wall, when the head dips into the wall.
+    //          also right now it doesnt check foot position or anything.
+    //          basically, there is "camera okay" and "player okay", and we
+    //          must only render the dual if camera okay, but also only allow
+    //          translocation if BOTH are okay.
+    //       b) make this validity check result available to scripts so that
+    //          they can enable/disable the translocation and swap out
+    //          the viewmodel for the occluded one.
+    // const float PLAYER_RADIUS = 1.2;
+    // bool isValidPosition = t2_SphrSphereInWorld(&pos->loc, PLAYER_RADIUS);
+
+    if (isCameraInWorld) {
+        // Render this second pass of the world only where the stencil value
+        // is 1.
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILREF, 0x01);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILMASK, 0xFF);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFF);
+
+        // The original cam_render_scene will clear target+zbuffer+stencil
+        // before drawing. We want to keep the previous scene render, so we
+        // prevent clearing the target. And we want to keep what we've just
+        // put in the stencil, so we prevent clearing the stencil too.
+        g_State.dontClearTarget = true;
+        g_State.dontClearStencil = true;
+
+        // Calling this again might have undesirable side effects; needs research.
+        // Although right now I'm not seeing frobbiness being affected... not a
+        // very conclusive test ofc.
+        g_State.isRenderingDual = true;
+        ORIGINAL_cam_render_scene(pos, zoom);
+        g_State.isRenderingDual = false;
+        g_State.dontClearTarget = false;
+        g_State.dontClearStencil = false;
+
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+        device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
 
         // Restore the original position.
         *pos = originalPos;
@@ -736,7 +882,7 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
         isPeriapt = (name && (stricmp(name, "periaptv") == 0));
     }
 
-    if (isPeriapt && g_State.isRenderingDual) {
+    if (isPeriapt && g_State.isRenderingDual && !g_State.isTransitioning) {
         // Skip the viewmodel in the dual pass.
     } else {
         ORIGINAL_rendobj_render_object(obj, clut, fragment);
@@ -849,6 +995,7 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
                 }
             }
         }
+        PeriaptVertexIndex = 0;
     }
 
     // We don't want to do any drawing into the stencil until all textures
@@ -857,26 +1004,9 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
         (g_State.crystalTexture && g_State.overlayTexture
         && g_State.part1Texture && g_State.part2Texture);
     g_State.partIndex = 0;
-    
+
     ORIGINAL_mm_hardware_render(m);
 }
-
-// We save transformed vertices here every frame, so we can draw it our way.
-#define PERIAPT_PART_COUNT  4
-#define PERIAPT_CRYSTAL 0
-#define PERIAPT_PART_1  1
-#define PERIAPT_PART_2  2
-#define PERIAPT_IGNORE  -1
-#define PERIAPT_PRIMITIVE_COUNT  256
-// For the viewmodel, FVF is D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1
-struct primitive {
-    float x,y,z,w;
-    D3DCOLOR diffuse;
-    D3DCOLOR specular;
-    float u,v;
-} __attribute__((aligned(4)));
-static struct primitive PeriaptPrimitive[3][3*PERIAPT_PRIMITIVE_COUNT];
-static UINT PeriaptPrimitiveCount[3];
 
 extern "C"
 int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
@@ -890,10 +1020,15 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
             pVertexStreamZeroData, VertexStreamZeroStride);
     }
 
+    if (g_State.isRenderingDual) {
+        // TODO: *do* need to do this when transitioning
+        return S_OK;
+    }
+
     // Just some sanity checks.
     assert(PrimitiveType==D3DPT_TRIANGLELIST);
-    assert(PrimitiveCount<=PERIAPT_PRIMITIVE_COUNT);
-    assert(VertexStreamZeroStride==sizeof(struct primitive));
+    assert(3*PrimitiveCount<=PERIAPT_VERTEX_COUNT);
+    assert(VertexStreamZeroStride==sizeof(struct PrimVertex));
 
     // Save the transformed vertices for all the parts, so we can draw them in
     // the order that we need.
@@ -910,9 +1045,12 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         partIndex = PERIAPT_PART_2;
     }
     if (partIndex!=PERIAPT_IGNORE) {
-        memcpy(PeriaptPrimitive[partIndex], pVertexStreamZeroData,
-            3*PrimitiveCount*sizeof(struct primitive));
+        assert((PeriaptVertexIndex+3*PrimitiveCount)<=PERIAPT_VERTEX_COUNT);
+        memcpy(&PeriaptVertex[PeriaptVertexIndex], pVertexStreamZeroData,
+            3*PrimitiveCount*sizeof(struct PrimVertex));
         PeriaptPrimitiveCount[partIndex] = PrimitiveCount;
+        PeriaptPrimitiveStart[partIndex] = PeriaptVertexIndex;
+        PeriaptVertexIndex += 3*PrimitiveCount;
     }
 
     // We don't know what order the draw calls for the periapt are issued in,
@@ -921,13 +1059,6 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     ++g_State.partIndex;
     if (!isLastPart)
         return S_OK;    
-
-    // TODO: allow the alpha threshold (or at least changes to it) to
-    //       be driven by script. For now, this will do to let me do
-    //       the art bits.
-    static uint32_t frameCounter;
-    float time = (float)(frameCounter&0x3FF)/255.0f;
-    ++frameCounter;
 
     // OKAY: lets build this up slowly. Start with just drawing the periapt
     //       the way i want it.
@@ -939,41 +1070,93 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
     device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
     device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
-    // device->GetRenderState(D3DRS_ZWRITEENABLE, &zEnable);
-    // device->GetRenderState(D3DRS_ZFUNC, &zFunc);
+    device->GetRenderState(D3DRS_ZWRITEENABLE, &zEnable);
+    device->GetRenderState(D3DRS_ZFUNC, &zFunc);
 
     // Draw the main parts of the periapt.
-    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    device->SetRenderState(D3DRS_STENCILMASK, 0xFF);
+    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFF);
+    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
+    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
+    device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+    if (g_State.isTransitioning) {
+        // Only draw the periapt in the inner circle.
+        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+        device->SetRenderState(D3DRS_STENCILREF, 0x2);
+    } else {
+        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+    }
+
     // Part 1 is alpha-tested.
+    device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
     device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
     device->SetRenderState(D3DRS_ALPHAREF, 127);
     device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
     device->SetTexture(0, g_State.part2Texture);
     device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
         PeriaptPrimitiveCount[PERIAPT_PART_2],
-        PeriaptPrimitive[PERIAPT_PART_2],
-        sizeof(struct primitive));
+        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_2]),
+        sizeof(struct PrimVertex));
     // Part 2 is opaque.
     device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     device->SetTexture(0, g_State.part1Texture);
     device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
         PeriaptPrimitiveCount[PERIAPT_PART_1],
-        PeriaptPrimitive[PERIAPT_PART_1],
-        sizeof(struct primitive));
+        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_1]),
+        sizeof(struct PrimVertex));
+
+#if 0
+    // If we're transitioning, we need to draw the overlay now.
+    if (g_State.isTransitioning) {
+        int threshold = 64; // TODO: base this off a t value/time. also make it global state
+
+        // Clear the stencil buffer.
+        device->Clear(0, NULL, D3DCLEAR_STENCIL, 0, 0, 0);
+
+        // Enable alpha test.
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+        device->SetRenderState(D3DRS_ALPHAREF, threshold);
+        device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
+        // Don't z test or z write.
+        device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        device->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
+
+        // Only draw _outside_ the current area
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_NOTEQUAL);
+
+        // Draw the overlay
+        device->SetTexture(0, g_State.overlayTexture);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
+            OverlayVertex, sizeof(struct PrimVertex));
+        // Restore things for the rest of the periapt.
+        device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+        device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
+        device->SetRenderState(D3DRS_ZFUNC, zFunc);
+
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+    }
+#endif
+
     // The crystal is opaque, but must render into the stencil buffer.
     device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-    device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
     device->SetRenderState(D3DRS_STENCILREF, 0x1);
-    device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-    device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
-    device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-    device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
     device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+    if (g_State.isTransitioning) {
+        // Only draw the crystal in the inner circle.
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_LESS);
+    } else {
+        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+    }
+
     device->SetTexture(0, g_State.crystalTexture);
     device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
         PeriaptPrimitiveCount[PERIAPT_CRYSTAL],
-        PeriaptPrimitive[PERIAPT_CRYSTAL],
-        sizeof(struct primitive));
+        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_CRYSTAL]),
+        sizeof(struct PrimVertex));
+
+    // Remember to turn off stencil rendering!
     device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
 
     // Restore alpha blend, alpha test, and z state.
@@ -981,8 +1164,9 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
     device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
     device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
-    // device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
-    // device->SetRenderState(D3DRS_ZFUNC, zFunc);
+    device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
+    device->SetRenderState(D3DRS_ZFUNC, zFunc);
+    device->SetTexture(0, texture);
 
     return S_OK;
 
@@ -1025,8 +1209,8 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
         device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
         device->SetRenderState(D3DRS_STENCILREF, 0x1);
-        device->SetRenderState(D3DRS_STENCILMASK, 0xffffffff);
-        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff);
+        device->SetRenderState(D3DRS_STENCILMASK, 0xFF);
+        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFF);
         device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
         device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
 
@@ -1036,41 +1220,6 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
             // Draw a full screen quad with the overlay texture, for world
             // transitions.
 
-            // Get the render target size.
-            IDirect3DSurface9* surface = NULL;
-            D3DSURFACE_DESC surfaceDesc = {};
-            device->GetRenderTarget(0, &surface);
-            surface->GetDesc(&surfaceDesc);
-
-            // FVF is D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1
-            // so we just match that.
-            struct vertex {
-                float x,y,z,w;
-                D3DCOLOR diffuse;
-                D3DCOLOR specular;
-                float u,v;
-            } __attribute__((aligned(4)));
-            struct vertex overlayVertices[4];
-            for (int i=0; i<4; ++i) {
-                if (i&1) {
-                    overlayVertices[i].x = (float)surfaceDesc.Width+0.5f;
-                    overlayVertices[i].u = 1.0f;
-                } else {
-                    overlayVertices[i].x = 0.5f;
-                    overlayVertices[i].u = 0.0f;
-                }
-                if (i&2) {
-                    overlayVertices[i].y = (float)surfaceDesc.Height+0.5f;
-                    overlayVertices[i].v = 1.0f;
-                } else {
-                    overlayVertices[i].y = 0.5f;
-                    overlayVertices[i].v = 0.0f;
-                }
-                overlayVertices[i].z = 0.0f; // TODO: ??? is this necessarily z-reversed, or what?
-                overlayVertices[i].w = 1.0f;
-                overlayVertices[i].diffuse = D3DCOLOR_COLORVALUE(1.0,1.0,1.0,1.0);
-                overlayVertices[i].specular = D3DCOLOR_COLORVALUE(0.0,0.0,0.0,1.0);
-            }
 
             int threshold;
             if (time>=1.0f && time<2.0f) {
