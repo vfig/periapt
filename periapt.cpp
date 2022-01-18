@@ -716,6 +716,8 @@ static void EndD3DStateChanges(IDirect3DDevice9* device) {
 /***************************************************************************/
 /*** Hooked functions: periapt rendering, and distance/view clipping ***/
 
+#define FADE_DURATION 0.3 // seconds
+
 #define TRANSITION_DURATION 1.5         // seconds
 #define TRANSITION_GAP 4                // 0-255
 // The value of TRANSITION_FIRSTHALF_END depends on the gradient in the art
@@ -729,6 +731,8 @@ static void EndD3DStateChanges(IDirect3DDevice9* device) {
 
 typedef enum PeriaptMode {
     PERIAPT_NORMAL,
+    PERIAPT_FADE,
+    PERIAPT_ACTIVE,
     PERIAPT_TRANSITION_BODY_REAL,
     PERIAPT_TRANSITION_BODY_DUAL,
     PERIAPT_TRANSITION_CRYSTAL,
@@ -744,6 +748,12 @@ typedef enum RenderWorldMode {
 static struct {
     uint32_t frame;
     float frameTime;
+    // TODO: rework isActive, isFading, isTransitioning into a single mode variable
+    bool isActive;
+    bool isFading;
+    bool isFadingOut;
+    float fadeStartTime;
+    float fadeProgress;
     bool isTransitioning;
     bool isTransitionFirstHalf;
     float transitionStartTime;
@@ -832,7 +842,7 @@ void DrawTransitionOverlay(IDirect3DDevice9* device) {
 
     // TODO: we can reduce this to two calls, by clearing the stencil to 1,
     // and rendering the first pass with inverted alpha test and to set
-    // stencil to zero.
+    // stencil to zero. but only if we don't do any uv shenanigans.
     D3DState d3dState;
     BeginD3DStateChanges(device, &d3dState);
 
@@ -907,6 +917,8 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             }
             break;
         case PERIAPT_NORMAL:
+        case PERIAPT_FADE:
+        case PERIAPT_ACTIVE:
         case PERIAPT_SAVE_STATE_ONLY:
             // Save the last render state.
             PeriaptLastRenderState = d3dState;
@@ -914,10 +926,14 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
     }
 
     bool drawBody = (mode==PERIAPT_NORMAL
+        || mode==PERIAPT_FADE
+        || mode==PERIAPT_ACTIVE
         || mode==PERIAPT_TRANSITION_BODY_REAL
         || mode==PERIAPT_TRANSITION_BODY_DUAL
         || mode==PERIAPT_TRANSITION_CRYSTAL);
     bool drawCrystal = (mode==PERIAPT_NORMAL
+        || mode==PERIAPT_FADE
+        || mode==PERIAPT_ACTIVE
         || mode==PERIAPT_TRANSITION_CRYSTAL
         || mode==PERIAPT_TRANSITION_CRYSTAL_Z_ONLY);
 
@@ -946,6 +962,10 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             d3dState.stencilZFail = D3DSTENCILOP_KEEP;
             d3dState.stencilPass = D3DSTENCILOP_KEEP;
         } else if (mode==PERIAPT_TRANSITION_CRYSTAL) {
+            // We need to draw these parts before the crystal so that
+            // they knock out parts of the crystal behind them with
+            // its z test.
+            //
             // Test: stencil != 0
             // Write: keep
             d3dState.stencilEnable = TRUE;
@@ -998,13 +1018,38 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             d3dState.alphaBlendEnable = FALSE;
             d3dState.alphaTestEnable = FALSE;
         } else if (mode==PERIAPT_TRANSITION_CRYSTAL_Z_ONLY) {
+            // Stencil disabled
             // Write only to z-buffer
             d3dState.stencilEnable = FALSE;
             d3dState.alphaBlendEnable = TRUE;
             d3dState.srcBlend = D3DBLEND_ZERO;
             d3dState.destBlend = D3DBLEND_ONE;
             d3dState.alphaTestEnable = FALSE;
-        } else {
+        } else if (mode==PERIAPT_FADE) {
+            // When fading the crystal, we must draw it twice. The first time
+            // with alpha testing and setting the stencil; the second time with
+            // inverse alpha testing and stencil disabled; this way the dual
+            // view is limited to the areas where the first alpha test passes.
+            // We can then modulate the dual view fading in or out by changing
+            // the alpha test threshold.
+            float t = g_State.fadeProgress;
+            if (g_State.isFadingOut) t = 1.0-t;
+            int threshold = (int)(t*255.0f);
+            // Test: always
+            // Write: stencil 1
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
+            d3dState.stencilFunc = D3DCMP_ALWAYS;
+            d3dState.stencilRef = STENCILREF_DUAL;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilPass = D3DSTENCILOP_REPLACE;
+            d3dState.alphaBlendEnable = FALSE;
+            d3dState.alphaTestEnable = TRUE;
+            d3dState.alphaRef = threshold;
+            d3dState.alphaFunc = D3DCMP_LESSEQUAL;
+        } else if (mode==PERIAPT_ACTIVE) {
             // Test: always
             // Write: stencil 1
             d3dState.stencilEnable = TRUE;
@@ -1017,6 +1062,11 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             d3dState.stencilPass = D3DSTENCILOP_REPLACE;
             d3dState.alphaBlendEnable = FALSE;
             d3dState.alphaTestEnable = FALSE;
+        } else {
+            // Stencil disabled
+            d3dState.stencilEnable = FALSE;
+            d3dState.alphaBlendEnable = FALSE;
+            d3dState.alphaTestEnable = FALSE;
         }
         d3dState.texture0 = g_State.crystalTexture;
         ApplyD3DState(device, &d3dState);
@@ -1024,6 +1074,18 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             PeriaptPrimitiveCount[PERIAPT_CRYSTAL],
             (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_CRYSTAL]),
             sizeof(struct PrimVertex));
+
+        // Draw the crystal again for fade mode, with inverted alpha test.
+        if (mode==PERIAPT_FADE) {
+            // Stencil disabled
+            d3dState.stencilEnable = FALSE;
+            d3dState.alphaFunc = D3DCMP_GREATER;
+            ApplyD3DState(device, &d3dState);
+            device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+                PeriaptPrimitiveCount[PERIAPT_CRYSTAL],
+                (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_CRYSTAL]),
+                sizeof(struct PrimVertex));
+        }
     }
     EndD3DStateChanges(device);
 }
@@ -1103,30 +1165,65 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     g_State.frameTime = (float)((double)g_State.frame/60.0);
 
-    // TODO: animation loop time
-    g_State.frameTime = fmodf(g_State.frameTime, (5.0f+TRANSITION_DURATION+1.0f));
+    // TODO: make sure that the periapt is only ever opaque and nonfunctional
+    // before textures and vertices are ready?
 
-    // TODO: for developing the transition, we are always transitioning
-    if (g_State.texturesReady
-    && !g_State.isTransitioning
-    && g_State.frameTime>=5.0f
-    && g_State.frameTime<6.0f) {
-        g_State.transitionStartTime = g_State.frameTime;
-        g_State.isTransitioning = true;
-        printf("Beginning transition\n");
+    // TODO: animation loop time // TEMP variables for a repeated loop
+    g_State.frameTime = fmodf(g_State.frameTime, (1.0f+FADE_DURATION+1.0f+TRANSITION_DURATION+1.0f+FADE_DURATION+1.0f));
+    float fadeInStartTime = 1.0f;
+    float transitionStartTime = fadeInStartTime+FADE_DURATION+1.0f;
+    float fadeOutStartTime = transitionStartTime+TRANSITION_DURATION+1.0f;
+    float fadeOutEndTime = fadeOutStartTime+FADE_DURATION;
+
+    g_State.isActive = (g_State.frameTime>=fadeInStartTime
+        && g_State.frameTime<fadeOutEndTime);
+
+    // TODO: fade actually needs to be triggered by script
+    if (g_State.frameTime>=fadeInStartTime
+    && g_State.frameTime<(fadeInStartTime+0.25f)
+    && !g_State.isFading) {
+        g_State.fadeStartTime = g_State.frameTime;
+        g_State.isFading = true;
+        g_State.isFadingOut = false;
+    }
+    if (g_State.frameTime>=fadeOutStartTime
+    && g_State.frameTime<(fadeOutStartTime+0.25f)
+    && !g_State.isFading) {
+        g_State.fadeStartTime = g_State.frameTime;
+        g_State.isFading = true;
+        g_State.isFadingOut = true;
+    }
+    if (g_State.isFading) {
+        g_State.fadeProgress =
+            (g_State.frameTime-g_State.fadeStartTime)/FADE_DURATION;
+        if (g_State.fadeProgress>1.0) {
+            g_State.fadeProgress = 0.0;
+            g_State.isFading = false;
+        }
+    } else {
+        g_State.fadeProgress = 0.0f;
     }
 
-    g_State.transitionProgress =
-        (g_State.frameTime-g_State.transitionStartTime)/TRANSITION_DURATION;
-    printf("progress: %f\n", g_State.transitionProgress);
-
-    g_State.isTransitionFirstHalf =
-        (g_State.transitionProgress<TRANSITION_FIRSTHALF_END);
-    if (g_State.isTransitioning
-    && g_State.transitionProgress>1.0) {
-        g_State.transitionProgress = 1.0;
-        g_State.isTransitioning = false;
-        printf("Ended transition\n");
+    // TODO: transition actually needs to be triggered by script
+    if (g_State.frameTime>=transitionStartTime
+    && g_State.frameTime<(transitionStartTime+0.25f)
+    && !g_State.isTransitioning) {
+        g_State.transitionStartTime = g_State.frameTime;
+        g_State.isTransitioning = true;
+    }
+    if (g_State.isTransitioning) {
+        g_State.transitionProgress =
+            (g_State.frameTime-g_State.transitionStartTime)/TRANSITION_DURATION;
+        g_State.isTransitionFirstHalf =
+            (g_State.transitionProgress<TRANSITION_FIRSTHALF_END);
+        if (g_State.transitionProgress>1.0) {
+            g_State.transitionProgress = 0.0;
+            g_State.isTransitioning = false;
+            g_State.isTransitionFirstHalf = false;
+        }
+    } else {
+        g_State.transitionProgress = 0.0f;
+        g_State.isTransitionFirstHalf = false;
     }
 
     IDirect3DDevice9* device = *t2_d3d9device_ptr;
@@ -1337,7 +1434,7 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         if (texture==g_State.crystalTexture) {
             partIndex = PERIAPT_CRYSTAL;
         } else if (texture==g_State.overlayTexture) {
-            // ignore it
+            // Ignore it.
         } else if (texture==g_State.part1Texture) {
             partIndex = PERIAPT_PART_1;
         } else if (texture==g_State.part2Texture) {
@@ -1409,154 +1506,17 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         }
     } else {
         if (!g_State.isRenderingDual) {
-            DrawPeriapt(device, PERIAPT_NORMAL);
+            if (g_State.isFading) {
+                DrawPeriapt(device, PERIAPT_FADE);
+            } else if (g_State.isActive) {
+                DrawPeriapt(device, PERIAPT_ACTIVE);
+            } else {
+                DrawPeriapt(device, PERIAPT_NORMAL);
+            }
         }
     }
 
     return S_OK;
-
-#if 0
-    if (g_State.isTransitioning) {
-    } else {
-    }
-
-        g_State.crystalTexture;
-        g_State.overlayTexture;
-
-        // We want to clear the stencil for all the non-crystal parts of the
-        // periapt. Particularly for the chain and filigree, this allows them
-        // to be visible in front of the dual view.
-        //
-        // For the crystal, we want to draw it twice. The first time opaquely
-        // and clearing the stencil. The second time with alpha testing and
-        // clearing the stencil, so the dual view is limited to the areas where
-        // the alpha test passes. We can then modulate the dual view appearing
-        // or disappearing by changing the alpha test threshold.
-        //
-        // For the overlay, we want to ignore its actual vertex data, and
-        // render our own, full screen. It should not... figure this out later!
-
-        // Save the current alpha blend, alpha test, and z state.
-        DWORD alphaBlend = 0;
-        DWORD alphaTest = 0;
-        DWORD alphaRef = 0;
-        DWORD alphaFunc = 0;
-        DWORD zEnable = 0;
-        DWORD zFunc = 0;
-        device->GetRenderState(D3DRS_ALPHABLENDENABLE, &alphaBlend);
-        device->GetRenderState(D3DRS_ALPHATESTENABLE, &alphaTest);
-        device->GetRenderState(D3DRS_ALPHAREF, &alphaRef);
-        device->GetRenderState(D3DRS_ALPHAFUNC, &alphaFunc);
-        device->GetRenderState(D3DRS_ZWRITEENABLE, &zEnable);
-        device->GetRenderState(D3DRS_ZFUNC, &zFunc);
-
-        // Set up the stencil rendering.
-        device->SetRenderState(D3DRS_STENCILENABLE, TRUE);
-        device->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
-        device->SetRenderState(D3DRS_STENCILREF, 0x1);
-        device->SetRenderState(D3DRS_STENCILMASK, 0xFF);
-        device->SetRenderState(D3DRS_STENCILWRITEMASK, 0xFF);
-        device->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP);
-        device->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP);
-
-        // TODO: maybe add a flag as to whether we bother drawing this overlay
-        //       at all?
-        if (g_State.partIndex==0) {
-            // Draw a full screen quad with the overlay texture, for world
-            // transitions.
-
-
-            int threshold;
-            if (time>=1.0f && time<2.0f) {
-                threshold = (int)((time-1.0f)*255.0f);
-            } else if (time>=2.0f && time<3.0f) {
-                threshold = (int)((1.0f-(time-2.0f))*255.0f);
-            } else {
-                threshold = 0;
-            }
-
-            // Draw the overlay, alpha tested, not z tested, setting the stencil
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-            device->SetRenderState(D3DRS_ALPHAREF, threshold);
-            device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
-            device->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
-            device->SetRenderState(D3DRS_ZFUNC, D3DCMP_ALWAYS);
-            device->SetTexture(0, g_State.overlayTexture);
-
-            result = device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2,
-                overlayVertices, sizeof(struct vertex));
-
-            // Restore alpha blend, alpha test, z state, and texture.
-            device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
-            device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
-            device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
-            device->SetRenderState(D3DRS_ZWRITEENABLE, zEnable);
-            device->SetRenderState(D3DRS_ZFUNC, zFunc);
-            device->SetTexture(0, texture);
-        }
-
-        // Now draw this part of the periapt
-        if (isTheCrystal) {
-            // Draw the crystal opaquely, clearing the stencil
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
-            device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
-            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-                pVertexStreamZeroData, VertexStreamZeroStride);
-
-            int threshold;
-            if (time>=0.0f && time<1.0f) {
-                threshold = (int)(time*255.0f);
-            } else if (time>=3.0f && time<4.0f) {
-                threshold = (int)((1.0f-(time-3.0f))*255.0f);
-            } else {
-                threshold = 255;
-            }
-
-            // Draw it again, alpha tested, setting the stencil
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
-            device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-            device->SetRenderState(D3DRS_ALPHAREF, threshold);
-            device->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_LESSEQUAL);
-            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-                pVertexStreamZeroData, VertexStreamZeroStride);
-        } else if (isTheOverlay) {
-            // Don't bother drawing it, it only exists to get the game to load
-            // the texture for us.
-            result = S_OK;
-        } else {
-            // Clear the stencil with this part.
-            device->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_ZERO);
-            if (alphaBlend) {
-                // Force alpha clip instead of alpha blend.
-                device->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
-                device->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-                device->SetRenderState(D3DRS_ALPHAREF, 127);
-            }
-            result = device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-                pVertexStreamZeroData, VertexStreamZeroStride);
-        }
-
-        // Restore alpha blend, alpha test, and z state.
-        device->SetRenderState(D3DRS_ALPHABLENDENABLE, alphaBlend);
-        device->SetRenderState(D3DRS_ALPHATESTENABLE, alphaTest);
-        device->SetRenderState(D3DRS_ALPHAREF, alphaRef);
-        device->SetRenderState(D3DRS_ALPHAFUNC, alphaFunc);
-
-        // Disable stencil rendering again.
-        device->SetRenderState(D3DRS_STENCILENABLE, FALSE);
-
-        ++g_State.partIndex;
-
-        return result;
-    } else {
-        return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-            pVertexStreamZeroData, VertexStreamZeroStride);
-    }
-#endif
 }
 
 extern "C"
