@@ -710,12 +710,23 @@ static void EndD3DStateChanges(IDirect3DDevice9* device) {
 /***************************************************************************/
 /*** Hooked functions: periapt rendering, and distance/view clipping ***/
 
-#define TRANSITION_DURATION 12.0
+#define TRANSITION_DURATION 30.0
+#define TRANSITION_GAP 4
 #define TRANSITION_FLIP_T 0.2
 
-#define STENCIL_CRYSTAL 1
-#define STENCIL_INNER_CIRCLE 2
-#define STENCIL_OUTER_CIRCLE STENCIL_CRYSTAL
+// Stencil values
+#define STENCILREF_ZERO 0
+#define STENCILREF_DUAL 1
+#define STENCILREF_REAL 2      // Only used during the transition effect.
+
+typedef enum PeriaptMode {
+    PERIAPT_NORMAL,
+    PERIAPT_TRANSITION_BODY_REAL,
+    PERIAPT_TRANSITION_BODY_DUAL,
+    PERIAPT_TRANSITION_CRYSTAL,
+    PERIAPT_SAVE_STATE_ONLY,
+} PeriaptMode;
+static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode);
 
 
 static struct {
@@ -763,13 +774,13 @@ static D3DState PeriaptLastRenderState;
 static struct PrimVertex OverlayVertex[3*OVERLAY_VERTEX_COUNT];
 static UINT OverlayPrimitiveCount;
 
-void DrawTransition(IDirect3DDevice9* device, DWORD stencilRefInner,
-                    DWORD stencilRefOuter) {
+void DrawTransitionOverlay(IDirect3DDevice9* device) {
     // TODO: allow the alpha threshold (or at least changes to it) to
     //       be driven by script. For now, this will do to let me do
     //       the art bits.
-    int gap = 64;
-    int threshold = (int)(g_State.transitionProgress*(255.0f+gap));
+    int gap = TRANSITION_GAP;
+    float t = g_State.transitionProgress;
+    int threshold = (int)(t*(255.0f+gap));
     int innerThreshold = threshold-gap;
     if (innerThreshold<0) innerThreshold = 0;
     if (innerThreshold>255) innerThreshold = 255;
@@ -779,24 +790,26 @@ void DrawTransition(IDirect3DDevice9* device, DWORD stencilRefInner,
 
     // Set up the overlay to be a full screen quad.
     OverlayPrimitiveCount = 2;
-    IDirect3DSurface9* surface = NULL;
-    D3DSURFACE_DESC surfaceDesc = {};
-    device->GetRenderTarget(0, &surface);
-    surface->GetDesc(&surfaceDesc);
+    D3DVIEWPORT9 viewport = {};
+    device->GetViewport(&viewport);
+    // TODO: the uv manipulation is unnecessary when we have a tiny gap!
+    //       but if i want a larger gap, i shold make it spin anticlockwise.
+    float du = -1.7f*t;
+    float dv = -1.7f*t;
     for (int i=0; i<OVERLAY_VERTEX_COUNT; ++i) {
         if (i&1) {
-            OverlayVertex[i].x = (float)surfaceDesc.Width+0.5f;
-            OverlayVertex[i].u = 1.0f;
+            OverlayVertex[i].x = (float)viewport.Width+1.0f;
+            OverlayVertex[i].u = 1.0f+du;
         } else {
-            OverlayVertex[i].x = 0.5f;
-            OverlayVertex[i].u = 0.0f;
+            OverlayVertex[i].x = -1.0f;
+            OverlayVertex[i].u = 0.0f+du;
         }
         if (i&2) {
-            OverlayVertex[i].y = (float)surfaceDesc.Height+0.5f;
-            OverlayVertex[i].v = 1.0f;
+            OverlayVertex[i].y = (float)viewport.Height+1.0f;
+            OverlayVertex[i].v = 1.0f+dv;
         } else {
-            OverlayVertex[i].y = 0.5f;
-            OverlayVertex[i].v = 0.0f;
+            OverlayVertex[i].y = -1.0f;
+            OverlayVertex[i].v = 0.0f+dv;
         }
         OverlayVertex[i].z = 0.0f;
         OverlayVertex[i].w = 1.0f;
@@ -820,6 +833,21 @@ void DrawTransition(IDirect3DDevice9* device, DWORD stencilRefInner,
     ApplyD3DState(device, &d3dState);
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
         OverlayVertex, sizeof(struct PrimVertex));
+
+    // Okay, now revert to boring quad uvs again for the alpha test passes.
+    for (int i=0; i<OVERLAY_VERTEX_COUNT; ++i) {
+        if (i&1) {
+            OverlayVertex[i].u = 1.0f;
+        } else {
+            OverlayVertex[i].u = 0.0f;
+        }
+        if (i&2) {
+            OverlayVertex[i].v = 1.0f;
+        } else {
+            OverlayVertex[i].v = 0.0f;
+        }
+    }
+
     // Second pass: render the inner circle to stencil 2
     d3dState.alphaTestEnable = TRUE;
     d3dState.alphaRef = innerThreshold;
@@ -828,7 +856,7 @@ void DrawTransition(IDirect3DDevice9* device, DWORD stencilRefInner,
     d3dState.stencilMask = 0xFF;
     d3dState.stencilWriteMask = 0xFF;
     d3dState.stencilFunc = D3DCMP_ALWAYS;
-    d3dState.stencilRef = stencilRefInner;
+    d3dState.stencilRef = STENCILREF_REAL;
     d3dState.stencilFail = D3DSTENCILOP_KEEP;
     d3dState.stencilZFail = D3DSTENCILOP_KEEP;
     d3dState.stencilPass = D3DSTENCILOP_REPLACE;
@@ -839,7 +867,7 @@ void DrawTransition(IDirect3DDevice9* device, DWORD stencilRefInner,
     // Third time's the charm: render the outer circle to stencil 1
     d3dState.alphaRef = outerThreshold;
     d3dState.alphaFunc = D3DCMP_GREATER;
-    d3dState.stencilRef = stencilRefOuter;
+    d3dState.stencilRef = STENCILREF_DUAL;
     d3dState.texture0 = g_State.overlayTexture;
     ApplyD3DState(device, &d3dState);
     device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
@@ -925,7 +953,9 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     ++g_State.frame;
 
     g_State.frameTime = (float)((double)g_State.frame/60.0);
-    g_State.frameTime = fmodf(g_State.frameTime, 20.0f);
+
+    // TODO: animation loop time
+    g_State.frameTime = fmodf(g_State.frameTime, (5.0f+TRANSITION_DURATION+1.0f));
 
     // TODO: for developing the transition, we are always transitioning
     if (g_State.texturesReady
@@ -939,6 +969,10 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     g_State.transitionProgress =
         (g_State.frameTime-g_State.transitionStartTime)/TRANSITION_DURATION;
+
+    // TEMP: for testing the transition:
+    g_State.isTransitioning = true;
+    g_State.transitionProgress = 0.10f;
 
     g_State.isTransitionFirstHalf =
         (g_State.transitionProgress<TRANSITION_FLIP_T);
@@ -964,22 +998,15 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // we need to do it now.
         device->Clear(0, NULL, D3DCLEAR_STENCIL, 0, 0, 0);
 
+        DrawTransitionOverlay(device);
         if (g_State.isTransitionFirstHalf) {
-            DrawTransition(device, STENCIL_OUTER_CIRCLE, STENCIL_INNER_CIRCLE);
-        } else {
-            DrawTransition(device, STENCIL_INNER_CIRCLE, STENCIL_OUTER_CIRCLE);
+            // Draw the periapt crystal now, inverting the inner/outer cricles.
+            DrawPeriapt(device, PERIAPT_TRANSITION_CRYSTAL);
         }
 
         g_State.dontClearTarget = true;
         g_State.dontClearStencil = true;
-        // In the first part of the transition, we need to render the dual
-        // world first, with its periapt, so that the now-real world can be
-        // glimpsed in its crystal.
-        if (g_State.isTransitionFirstHalf) {
-            RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCIL_INNER_CIRCLE);
-        } else {
-            RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCIL_INNER_CIRCLE);
-        }
+        RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCILREF_REAL);
         g_State.dontClearTarget = false;
         g_State.dontClearStencil = false;
     } else {
@@ -1003,15 +1030,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     // put in the stencil, so we prevent clearing the stencil too.
     g_State.dontClearTarget = true;
     g_State.dontClearStencil = true;
-    if (g_State.isTransitioning) {
-        if (g_State.isTransitionFirstHalf) {
-            RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCIL_OUTER_CIRCLE);
-        } else {
-            RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCIL_OUTER_CIRCLE);
-        }
-    } else {
-        RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCIL_CRYSTAL);
-    }
+    RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCILREF_DUAL);
     g_State.dontClearTarget = false;
     g_State.dontClearStencil = false;
 }
@@ -1036,9 +1055,6 @@ void __cdecl HOOK_dark_render_overlays(void) {
     g_State.isDrawingOverlays = false;
 }
 
-static void DrawPeriapt(IDirect3DDevice9 *device, DWORD stencilRef,
-                        DWORD crystalStencilRef, bool useLastRenderState);
-
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     // Check if we are rendering the periapt object.
@@ -1052,8 +1068,9 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     && g_State.isTransitioning
     && g_State.isTransitionFirstHalf
     && g_State.isRenderingDual) {
+        // See comments in mDrawLists to explain why we have to do this here.
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
-        DrawPeriapt(device, STENCIL_INNER_CIRCLE, STENCIL_OUTER_CIRCLE, true);
+        DrawPeriapt(device, PERIAPT_TRANSITION_BODY_DUAL);
     } else {
         if (isPeriapt && g_State.isRenderingDual && !g_State.isTransitioning) {
             // Skip the viewmodel in the dual pass.
@@ -1121,88 +1138,138 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     ORIGINAL_mm_hardware_render(m);
 }
 
-static void DrawPeriapt(IDirect3DDevice9 *device, DWORD stencilRef,
-                        DWORD crystalStencilRef, bool useLastRenderState) {
+static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
+    // TEMP: while testing the transition (starts in media res, before the
+    // plain old periapt has had a chance to render!)
+    if (!g_State.texturesReady || !g_State.verticesReady) {
+        printf("TEMP: textures or vertices not ready yet\n");
+        return;
+    }
+
     assert(g_State.texturesReady);
     assert(g_State.verticesReady);
 
     D3DState d3dState;
     BeginD3DStateChanges(device, &d3dState);
 
-    if (useLastRenderState) {
-        // Use the last render state.
-        if (PeriaptLastRenderState.valid) {
-            d3dState = PeriaptLastRenderState;
-        }
-    } else {
-        // Save the last render state.
-        PeriaptLastRenderState = d3dState;
+    switch (mode) {
+        case PERIAPT_TRANSITION_CRYSTAL:
+        case PERIAPT_TRANSITION_BODY_REAL:
+        case PERIAPT_TRANSITION_BODY_DUAL:
+            // Use the last render state.
+            if (PeriaptLastRenderState.valid) {
+                d3dState = PeriaptLastRenderState;
+            }
+            break;
+        case PERIAPT_NORMAL:
+        case PERIAPT_SAVE_STATE_ONLY:
+            // Save the last render state.
+            PeriaptLastRenderState = d3dState;
+            break;
     }
 
-    // Draw the main parts of the periapt.
-    d3dState.stencilMask = 0xFF;
-    d3dState.stencilWriteMask = 0xFF;
-    d3dState.stencilFail = D3DSTENCILOP_KEEP;
-    d3dState.stencilZFail = D3DSTENCILOP_KEEP;
-    d3dState.stencilPass = D3DSTENCILOP_KEEP;
-    if (stencilRef!=0) {
-        d3dState.stencilEnable = TRUE;
-        d3dState.stencilFunc = D3DCMP_EQUAL;
-        d3dState.stencilRef = stencilRef;
-    } else {
-        d3dState.stencilEnable = FALSE;
-        d3dState.stencilFunc = D3DCMP_ALWAYS;
-    }
+    bool drawBody = (mode==PERIAPT_NORMAL
+        || mode==PERIAPT_TRANSITION_BODY_REAL
+        || mode==PERIAPT_TRANSITION_BODY_DUAL
+        || mode==PERIAPT_TRANSITION_CRYSTAL);
+    bool drawCrystal = (mode==PERIAPT_NORMAL
+        || mode==PERIAPT_TRANSITION_CRYSTAL);
 
-    // Part 1 is alpha-tested.
-    d3dState.alphaBlendEnable = FALSE;
-    d3dState.alphaTestEnable = TRUE;
-    d3dState.alphaRef = 127;
-    d3dState.alphaFunc = D3DCMP_GREATEREQUAL;
-    d3dState.texture0 = g_State.part2Texture;
-    ApplyD3DState(device, &d3dState);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
-        PeriaptPrimitiveCount[PERIAPT_PART_2],
-        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_2]),
-        sizeof(struct PrimVertex));
-    // Part 2 is opaque.
-    d3dState.alphaTestEnable = FALSE;
-    d3dState.texture0 = g_State.part1Texture;
-    ApplyD3DState(device, &d3dState);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
-        PeriaptPrimitiveCount[PERIAPT_PART_1],
-        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_1]),
-        sizeof(struct PrimVertex));
 
-    // The crystal is opaque, but must render into the stencil buffer.
-    d3dState.stencilEnable = TRUE;
-    d3dState.stencilRef = crystalStencilRef;
-    if (stencilRef!=0) {
-        // Only draw the crystal in the inner circle.
-        if (crystalStencilRef<stencilRef) {
-            d3dState.stencilFunc = D3DCMP_LESS;
-            d3dState.stencilPass = D3DSTENCILOP_DECRSAT;
-        } else if (crystalStencilRef>stencilRef) {
-            // first half, dual?
-            //d3dState.stencilFunc = D3DCMP_GREATER;
-            //d3dState.stencilPass = D3DSTENCILOP_INCRSAT;
-            d3dState.stencilFunc = D3DCMP_NEVER;
-            d3dState.stencilPass = D3DSTENCILOP_REPLACE;
-        } else {
+    if (drawBody) {
+        // Set up stencil parameters.
+        if (mode==PERIAPT_TRANSITION_BODY_REAL) {
+            // Test: stencil == 2
+            // Write: keep
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
             d3dState.stencilFunc = D3DCMP_EQUAL;
+            d3dState.stencilRef = STENCILREF_REAL;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilPass = D3DSTENCILOP_KEEP;
+        } else if (mode==PERIAPT_TRANSITION_BODY_DUAL) {
+            // Test: stencil == 1
+            // Write: keep
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
+            d3dState.stencilFunc = D3DCMP_EQUAL;
+            d3dState.stencilRef = STENCILREF_DUAL;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilPass = D3DSTENCILOP_KEEP;
+        } else if (mode==PERIAPT_TRANSITION_CRYSTAL) {
+            // Test: stencil != 0
+            // Write: keep
+            // This is just for the pre-transition-crystal z-write.
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
+            d3dState.stencilFunc = D3DCMP_NOTEQUAL;
+            d3dState.stencilRef = STENCILREF_ZERO;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilPass = D3DSTENCILOP_KEEP;
+        } else {
+            d3dState.stencilEnable = FALSE;
+        }
+
+        // Part 1 is alpha-tested.
+        d3dState.alphaBlendEnable = FALSE;
+        d3dState.alphaTestEnable = TRUE;
+        d3dState.alphaRef = 127;
+        d3dState.alphaFunc = D3DCMP_GREATEREQUAL;
+        d3dState.texture0 = g_State.part2Texture;
+        ApplyD3DState(device, &d3dState);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+            PeriaptPrimitiveCount[PERIAPT_PART_2],
+            (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_2]),
+            sizeof(struct PrimVertex));
+
+        // Part 2 is opaque.
+        d3dState.alphaTestEnable = FALSE;
+        d3dState.texture0 = g_State.part1Texture;
+        ApplyD3DState(device, &d3dState);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+            PeriaptPrimitiveCount[PERIAPT_PART_1],
+            (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_PART_1]),
+            sizeof(struct PrimVertex));
+    }
+
+    if (drawCrystal) {
+        // The crystal is opaque, but must render into the stencil buffer.
+        if (mode==PERIAPT_TRANSITION_CRYSTAL) {
+            // Test: stencil != 0
+            // Write: Swap stencil values 1 and 2
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
+            d3dState.stencilFunc = D3DCMP_NOTEQUAL;
+            d3dState.stencilRef = STENCILREF_ZERO;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilPass = D3DSTENCILOP_INVERT;
+        } else {
+            // Test: always
+            // Write: stencil 1
+            d3dState.stencilEnable = TRUE;
+            d3dState.stencilMask = 0x03;
+            d3dState.stencilWriteMask = 0x03;
+            d3dState.stencilFunc = D3DCMP_ALWAYS;
+            d3dState.stencilRef = STENCILREF_DUAL;
+            d3dState.stencilFail = D3DSTENCILOP_KEEP;
+            d3dState.stencilZFail = D3DSTENCILOP_KEEP;
             d3dState.stencilPass = D3DSTENCILOP_REPLACE;
         }
-    } else {
-        d3dState.stencilFunc = D3DCMP_ALWAYS;
-        d3dState.stencilPass = D3DSTENCILOP_REPLACE;
+        d3dState.texture0 = g_State.crystalTexture;
+        ApplyD3DState(device, &d3dState);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+            PeriaptPrimitiveCount[PERIAPT_CRYSTAL],
+            (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_CRYSTAL]),
+            sizeof(struct PrimVertex));
     }
-    d3dState.texture0 = g_State.crystalTexture;
-    ApplyD3DState(device, &d3dState);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
-        PeriaptPrimitiveCount[PERIAPT_CRYSTAL],
-        (PeriaptVertex+PeriaptPrimitiveStart[PERIAPT_CRYSTAL]),
-        sizeof(struct PrimVertex));
-
     EndD3DStateChanges(device);
 }
 
@@ -1306,12 +1373,15 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
             // render the periapt. So in the first half transition, when drawing
             // the dual, we drew last frame's periapt in rendobj_render_obj()
             // already.
-        } else if (!g_State.isTransitionFirstHalf && !g_State.isRenderingDual){
-            DrawPeriapt(device, STENCIL_INNER_CIRCLE, STENCIL_OUTER_CIRCLE, false);
+        } else if (g_State.isTransitionFirstHalf && !g_State.isRenderingDual){
+            DrawPeriapt(device, PERIAPT_TRANSITION_BODY_REAL);
+        }
+        if (!g_State.isRenderingDual) {
+            DrawPeriapt(device, PERIAPT_SAVE_STATE_ONLY);
         }
     } else {
         if (!g_State.isRenderingDual) {
-            DrawPeriapt(device, 0, STENCIL_CRYSTAL, false);
+            DrawPeriapt(device, PERIAPT_NORMAL);
         }
     }
 
