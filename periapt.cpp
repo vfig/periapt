@@ -776,8 +776,7 @@ static void EndD3DStateChanges(IDirect3DDevice9* device) {
 
 #define FADE_DURATION 0.3f              // seconds
 
-// TEMP
-#define TRANSITION_DURATION 25.0f; //1.5f        // seconds
+#define TRANSITION_DURATION 1.5f        // seconds
 #define TRANSITION_GAP 4                // 0-255
 // The value of TRANSITION_FIRSTHALF_END depends on the gradient in the art
 // and the gap size. Once those are fixed, tune it to fit.
@@ -1277,76 +1276,6 @@ static void RenderWorld(IDirect3DDevice9* device, t2position* pos, double zoom,
     }
 }
 
-typedef struct ClipRect {
-    float tMax, left, right, top, bottom;
-} ClipRect;
-ClipRect PeriaptClipRect = \
-    { 0.0000f,    0.51f, 1.0f, 0.31f, 1.0f };
-// TODO: we dont need these!
-//       UNLESS: it turns out to be faster, during the transition, to render
-//       the world **three** times:
-//          - real;
-//          - dual, clipped to the periapt;
-//          - dual, clipped to the left hand side.
-//       i mean, it probably would, but how much faster exactly?
-//
-ClipRect TransitionClipRect[] = {
-    { 0.0607f,    0.51f, 1.0f, 0.29f, 1.0f },
-    { 0.1120f,    0.51f, 1.0f, 0.15f, 1.0f },
-    { 0.1547f,    0.43f, 1.0f, 0.05f, 1.0f },
-    { 0.2107f,    0.41f, 1.0f, 0.00f, 1.0f },
-    { 0.2793f,    0.34f, 1.0f, 0.00f, 1.0f },
-    { 0.3567f,    0.25f, 1.0f, 0.00f, 1.0f },
-    { 0.4187f,    0.20f, 1.0f, 0.00f, 1.0f },
-    { 0.4980f,    0.13f, 1.0f, 0.00f, 1.0f },
-    { 0.6307f,    0.00f, 1.0f, 0.00f, 1.0f },
-    { 1.0000f,    0.00f, 1.0f, 0.00f, 1.0f },
-};
-
-// TEMP:
-void DrawRedBox(IDirect3DDevice9* device, float x0, float y0, float x1, float y1) {
-    // Reuse the overlay quad
-    OverlayPrimitiveCount = 2;
-    D3DVIEWPORT9 viewport = {};
-    device->GetViewport(&viewport);
-    for (int i=0; i<OVERLAY_VERTEX_COUNT; ++i) {
-        if (i&1) {
-            OverlayVertex[i].x = x1*(float)viewport.Width-1.0f;
-            OverlayVertex[i].u = 1.0f;
-        } else {
-            OverlayVertex[i].x = x0*(float)viewport.Width;
-            OverlayVertex[i].u = 0.0f;
-        }
-        if (i&2) {
-            OverlayVertex[i].y = y1*(float)viewport.Height-1.0f;
-            OverlayVertex[i].v = 1.0f;
-        } else {
-            OverlayVertex[i].y = y0*(float)viewport.Height;
-            OverlayVertex[i].v = 0.0f;
-        }
-        OverlayVertex[i].z = 0.0f;
-        OverlayVertex[i].w = 1.0f;
-        OverlayVertex[i].diffuse = D3DCOLOR_COLORVALUE(1.0,0.0,0.0,1.0);
-        OverlayVertex[i].specular = D3DCOLOR_COLORVALUE(0.0,0.0,0.0,1.0);
-    }
-
-    D3DState d3dState;
-    BeginD3DStateChanges(device, &d3dState);
-    // Don't z test or z write.
-    d3dState.rs.zWriteEnable = FALSE;
-    d3dState.rs.zFunc = D3DCMP_ALWAYS;
-    // First pass: render opaquely.
-    d3dState.rs.alphaBlendEnable = FALSE;
-    d3dState.rs.alphaTestEnable = FALSE;
-    d3dState.texture[0] = NULL;
-    ApplyD3DState(device, &d3dState);
-    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
-    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
-        OverlayVertex, sizeof(struct PrimVertex));
-    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
-    EndD3DStateChanges(device);
-}
-
 
 static bool DoTransition() {
     // TODO: check if it is permitted to transition right now!
@@ -1508,35 +1437,6 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         device->Clear(0, NULL, D3DCLEAR_ZBUFFER, 0, 1.0f, 0);
         DrawPeriapt(device, PERIAPT_FACETS);
     }
-
-    if (g_State.isTransitioning) {
-        IDarkUISrv* pUI = static_cast<IDarkUISrv*>(g_pScriptManager->GetService(IID_IDarkUIScriptService));
-        if (pUI)
-        {
-            static char msg[256];
-            sprintf(msg, "transition: %0.4f", g_State.transitionProgress);
-            pUI->TextMessage(msg, 0x0000FFUL, 1000);
-            pUI->Release();
-        }
-
-    }
-
-    // TEMP: draw a red box that we can use to tune clip boundaries.
-    ClipRect *rect;
-    if (g_State.isTransitioning) {
-        int count=sizeof(TransitionClipRect)/sizeof(TransitionClipRect[0]);
-        for (int i=0; i<count; ++i) {
-            rect = &TransitionClipRect[i];
-            if (TransitionClipRect[i].tMax>g_State.transitionProgress)
-                break;
-        }
-    } else {
-        rect = &PeriaptClipRect;
-    }
-    printf("clip to: %f,%f - %f,%f\n",
-        rect->left, rect->top,
-        rect->right, rect->bottom);
-    DrawRedBox(device, rect->left, rect->top, rect->right, rect->bottom);
 }
 
 extern "C"
@@ -1823,28 +1723,25 @@ extern "C"
 void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     int l=0, r=w, t=0, b=h;
 
-// TEMP: not restoring culling quite yet!
-#if 0
     if (g_State.isRenderingDual
-    && g_State.dualCull) {
+    && !g_State.isTransitioning
+    && g_Periapt.dualCull) {
         // Adjust the portal clipping rectangle for the second render pass.
-
+        //
         // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
         // but for the second pass we want to only include portals that would
         // be rendered in the periapt viewmodel, or in the transition area.
-
-        // TODO: not using it yet
-        //int count=sizeof(DualClipRect)/sizeof(DualClipRect[0]);
-
-        s
         //
-        // For now, let's just say "draw the right half of the screen only":
-        l = (int)(w*g_State.dualCullLeft);
-        r = (int)(w*g_State.dualCullRight);
-        t = (int)(h*g_State.dualCullTop);
-        b = (int)(h*g_State.dualCullBottom);
+        // Clip values to encompass the periapt (outwith transitions):
+        float clipLeft = 0.51f;
+        float clipRight = 1.0f;
+        float clipTop = 0.31f;
+        float clipBottom = 1.0f;
+        l = (int)(w*clipLeft);
+        r = (int)(w*clipRight);
+        t = (int)(h*clipTop);
+        b = (int)(h*clipBottom);
     }
-#endif
 
     clip->l = l<<16;
     clip->t = t<<16;
