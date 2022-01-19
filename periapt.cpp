@@ -269,7 +269,6 @@ static struct {
     bool dualRender;
     t2vector dualOffset;
     bool dualCull;
-    float dualCullLeft, dualCullTop, dualCullRight, dualCullBottom;
     bool depthCull;
     float depthCullDistance;
 } g_Periapt = { };
@@ -775,13 +774,15 @@ static void EndD3DStateChanges(IDirect3DDevice9* device) {
 /***************************************************************************/
 /*** Hooked functions: periapt rendering, and distance/view clipping ***/
 
-#define FADE_DURATION 0.3 // seconds
+#define FADE_DURATION 0.3f              // seconds
 
-#define TRANSITION_DURATION 1.5         // seconds
+// TEMP
+#define TRANSITION_DURATION 25.0f; //1.5f        // seconds
 #define TRANSITION_GAP 4                // 0-255
 // The value of TRANSITION_FIRSTHALF_END depends on the gradient in the art
 // and the gap size. Once those are fixed, tune it to fit.
-#define TRANSITION_FIRSTHALF_END 0.244  // progress t
+#define TRANSITION_FIRSTHALF_END 0.244f // progress t
+#define TRANSITION_ZOOM_FACTOR 0.2f
 
 // Stencil values
 #define STENCILREF_ZERO 0
@@ -1276,6 +1277,88 @@ static void RenderWorld(IDirect3DDevice9* device, t2position* pos, double zoom,
     }
 }
 
+typedef struct ClipRect {
+    float tMax, left, right, top, bottom;
+} ClipRect;
+ClipRect PeriaptClipRect = \
+    { 0.0000f,    0.51f, 1.0f, 0.31f, 1.0f };
+// TODO: we dont need these!
+//       UNLESS: it turns out to be faster, during the transition, to render
+//       the world **three** times:
+//          - real;
+//          - dual, clipped to the periapt;
+//          - dual, clipped to the left hand side.
+//       i mean, it probably would, but how much faster exactly?
+//
+ClipRect TransitionClipRect[] = {
+    { 0.0607f,    0.51f, 1.0f, 0.29f, 1.0f },
+    { 0.1120f,    0.51f, 1.0f, 0.15f, 1.0f },
+    { 0.1547f,    0.43f, 1.0f, 0.05f, 1.0f },
+    { 0.2107f,    0.41f, 1.0f, 0.00f, 1.0f },
+    { 0.2793f,    0.34f, 1.0f, 0.00f, 1.0f },
+    { 0.3567f,    0.25f, 1.0f, 0.00f, 1.0f },
+    { 0.4187f,    0.20f, 1.0f, 0.00f, 1.0f },
+    { 0.4980f,    0.13f, 1.0f, 0.00f, 1.0f },
+    { 0.6307f,    0.00f, 1.0f, 0.00f, 1.0f },
+    { 1.0000f,    0.00f, 1.0f, 0.00f, 1.0f },
+};
+
+// TEMP:
+void DrawRedBox(IDirect3DDevice9* device, float x0, float y0, float x1, float y1) {
+    // Reuse the overlay quad
+    OverlayPrimitiveCount = 2;
+    D3DVIEWPORT9 viewport = {};
+    device->GetViewport(&viewport);
+    for (int i=0; i<OVERLAY_VERTEX_COUNT; ++i) {
+        if (i&1) {
+            OverlayVertex[i].x = x1*(float)viewport.Width-1.0f;
+            OverlayVertex[i].u = 1.0f;
+        } else {
+            OverlayVertex[i].x = x0*(float)viewport.Width;
+            OverlayVertex[i].u = 0.0f;
+        }
+        if (i&2) {
+            OverlayVertex[i].y = y1*(float)viewport.Height-1.0f;
+            OverlayVertex[i].v = 1.0f;
+        } else {
+            OverlayVertex[i].y = y0*(float)viewport.Height;
+            OverlayVertex[i].v = 0.0f;
+        }
+        OverlayVertex[i].z = 0.0f;
+        OverlayVertex[i].w = 1.0f;
+        OverlayVertex[i].diffuse = D3DCOLOR_COLORVALUE(1.0,0.0,0.0,1.0);
+        OverlayVertex[i].specular = D3DCOLOR_COLORVALUE(0.0,0.0,0.0,1.0);
+    }
+
+    D3DState d3dState;
+    BeginD3DStateChanges(device, &d3dState);
+    // Don't z test or z write.
+    d3dState.rs.zWriteEnable = FALSE;
+    d3dState.rs.zFunc = D3DCMP_ALWAYS;
+    // First pass: render opaquely.
+    d3dState.rs.alphaBlendEnable = FALSE;
+    d3dState.rs.alphaTestEnable = FALSE;
+    d3dState.texture[0] = NULL;
+    ApplyD3DState(device, &d3dState);
+    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
+    device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, OverlayPrimitiveCount,
+        OverlayVertex, sizeof(struct PrimVertex));
+    device->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+    EndD3DStateChanges(device);
+}
+
+
+static bool DoTransition() {
+    // TODO: check if it is permitted to transition right now!
+    if (!g_State.isTransitioning) {
+        g_State.transitionStartTime = g_State.frameTime;
+        g_State.isTransitioning = true;
+        return true;
+    } else {
+        return false;
+    }
+}
+
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
@@ -1288,6 +1371,14 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     // TODO: make sure that the periapt is only ever opaque and nonfunctional
     // before textures and vertices are ready?
 
+    #define LOOP_FADE_AND_TRANSITION 0
+
+    #if !LOOP_FADE_AND_TRANSITION
+    // TEMP: Just make it always active for now.
+    g_State.isActive = true;
+    #endif
+
+    #if LOOP_FADE_AND_TRANSITION
     // TODO: animation loop time // TEMP variables for a repeated loop
     g_State.frameTime = fmodf(g_State.frameTime, (1.0f+FADE_DURATION+1.0f+TRANSITION_DURATION+1.0f+FADE_DURATION+1.0f));
     float fadeInStartTime = 1.0f;
@@ -1313,6 +1404,8 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         g_State.isFading = true;
         g_State.isFadingOut = true;
     }
+    #endif
+
     if (g_State.isFading) {
         g_State.fadeProgress =
             (g_State.frameTime-g_State.fadeStartTime)/FADE_DURATION;
@@ -1324,6 +1417,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         g_State.fadeProgress = 0.0f;
     }
 
+    #if LOOP_FADE_AND_TRANSITION
     // TODO: transition actually needs to be triggered by script
     if (g_State.frameTime>=transitionStartTime
     && g_State.frameTime<(transitionStartTime+0.25f)
@@ -1331,6 +1425,8 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         g_State.transitionStartTime = g_State.frameTime;
         g_State.isTransitioning = true;
     }
+    #endif
+
     if (g_State.isTransitioning) {
         g_State.transitionProgress =
             (g_State.frameTime-g_State.transitionStartTime)/TRANSITION_DURATION;
@@ -1344,6 +1440,15 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     } else {
         g_State.transitionProgress = 0.0f;
         g_State.isTransitionFirstHalf = false;
+    }
+
+    // Do a small zoom effect during transitions.
+    if (g_State.isTransitioning) {
+        // The pow() brings the peak of the effect forward in time.
+        float t = powf(g_State.transitionProgress, 0.5f);
+        // A gentle slope up to 1 and back down to 0:
+        float curve = 0.5-0.5*cos(6.283185f*t);
+        zoom = zoom*(1.0f+TRANSITION_ZOOM_FACTOR*curve);
     }
 
     IDirect3DDevice9* device = *t2_d3d9device_ptr;
@@ -1403,6 +1508,35 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         device->Clear(0, NULL, D3DCLEAR_ZBUFFER, 0, 1.0f, 0);
         DrawPeriapt(device, PERIAPT_FACETS);
     }
+
+    if (g_State.isTransitioning) {
+        IDarkUISrv* pUI = static_cast<IDarkUISrv*>(g_pScriptManager->GetService(IID_IDarkUIScriptService));
+        if (pUI)
+        {
+            static char msg[256];
+            sprintf(msg, "transition: %0.4f", g_State.transitionProgress);
+            pUI->TextMessage(msg, 0x0000FFUL, 1000);
+            pUI->Release();
+        }
+
+    }
+
+    // TEMP: draw a red box that we can use to tune clip boundaries.
+    ClipRect *rect;
+    if (g_State.isTransitioning) {
+        int count=sizeof(TransitionClipRect)/sizeof(TransitionClipRect[0]);
+        for (int i=0; i<count; ++i) {
+            rect = &TransitionClipRect[i];
+            if (TransitionClipRect[i].tMax>g_State.transitionProgress)
+                break;
+        }
+    } else {
+        rect = &PeriaptClipRect;
+    }
+    printf("clip to: %f,%f - %f,%f\n",
+        rect->left, rect->top,
+        rect->right, rect->bottom);
+    DrawRedBox(device, rect->left, rect->top, rect->right, rect->bottom);
 }
 
 extern "C"
@@ -1689,21 +1823,29 @@ extern "C"
 void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     int l=0, r=w, t=0, b=h;
 
-#if 0 // TEMP: disable clipping while developing the transition
+// TEMP: not restoring culling quite yet!
+#if 0
     if (g_State.isRenderingDual
-    && g_Periapt.dualCull) {
+    && g_State.dualCull) {
         // Adjust the portal clipping rectangle for the second render pass.
+
         // For the first pass l,t = 0,0 and r,b = w,h (screen dimensions);
         // but for the second pass we want to only include portals that would
-        // be rendered in the periapt viewmodel.
+        // be rendered in the periapt viewmodel, or in the transition area.
+
+        // TODO: not using it yet
+        //int count=sizeof(DualClipRect)/sizeof(DualClipRect[0]);
+
+        s
         //
         // For now, let's just say "draw the right half of the screen only":
-        l = (int)(w*g_Periapt.dualCullLeft);
-        r = (int)(w*g_Periapt.dualCullRight);
-        t = (int)(h*g_Periapt.dualCullTop);
-        b = (int)(h*g_Periapt.dualCullBottom);
+        l = (int)(w*g_State.dualCullLeft);
+        r = (int)(w*g_State.dualCullRight);
+        t = (int)(h*g_State.dualCullTop);
+        b = (int)(h*g_State.dualCullBottom);
     }
 #endif
+
     clip->l = l<<16;
     clip->t = t<<16;
     clip->r = r<<16;
@@ -1852,10 +1994,11 @@ public:
 long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScrTraceAction eTrace)
 {
     long iRet = cScript::ReceiveMessage(pMsg, pReply, eTrace);
+    const char *message = pMsg->message;
 
-    if (stricmp(pMsg->message, "Sim") == 0) {
+    if (stricmp(message, "Sim") == 0) {
         bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
-        printf(PREFIX "Sim: fStarting=%s\n", (fStarting ? "true" : "false"));
+        printf(PREFIX "%s: fStarting=%s\n", message, (fStarting ? "true" : "false"));
         if (fStarting) {
             // TODO: later we might want the switch to control just the specific
             // periapt rendering, not necessarily enable/disable hooks generally;
@@ -1866,87 +2009,66 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
             disable_hooks();
         }
     }
-    else if (stricmp(pMsg->message, "DarkGameModeChange") == 0) {
+    else if (stricmp(message, "DarkGameModeChange") == 0) {
         bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
-        printf(PREFIX "DarkGameModeChange: fEntering=%s\n", (fEntering ? "true" : "false"));
+        printf(PREFIX "%s: fEntering=%s\n", message, (fEntering ? "true" : "false"));
     }
-    else if (stricmp(pMsg->message, "BeginScript") == 0) {
-        printf(PREFIX "BeginScript\n");
+    else if (stricmp(message, "BeginScript") == 0) {
+        printf(PREFIX "%s\n", message);
         // TODO: load settings from saved data (if any)
         g_Periapt.dualRender = false;
         g_Periapt.dualOffset.x = 0.0f;
         g_Periapt.dualOffset.y = 0.0f;
         g_Periapt.dualOffset.z = 1.0f;
         g_Periapt.dualCull = false;
-        g_Periapt.dualCullLeft = 0.0f;
-        g_Periapt.dualCullTop = 0.0f;
-        g_Periapt.dualCullRight = 1.0f;
-        g_Periapt.dualCullBottom = 1.0f;
         g_Periapt.depthCull = false;
         g_Periapt.depthCullDistance = 256.0f;
     }
-    else if (stricmp(pMsg->message, "EndScript") == 0) {
-        printf(PREFIX "EndScript\n");
+    else if (stricmp(message, "EndScript") == 0) {
+        printf(PREFIX "%s\n", message);
     }
-    else if (stricmp(pMsg->message, "TurnOn") == 0) {
-        printf(PREFIX "TurnOn\n");
+    else if (stricmp(message, "TurnOn") == 0) {
+        printf(PREFIX "%s\n", message);
         enable_hooks();
     }
-    else if (stricmp(pMsg->message, "TurnOff") == 0) {
-        printf(PREFIX "TurnOn\n");
+    else if (stricmp(message, "TurnOff") == 0) {
+        printf(PREFIX "%s\n", message);
         disable_hooks();
     }
-    else if (stricmp(pMsg->message, "SetDualRender") == 0) {
+    else if (stricmp(message, "Translocate") == 0) {
+        printf(PREFIX "%s\n", message);
+        bool ok = DoTransition();
+        if (pReply) *pReply = cMultiParm(ok);
+    }
+    else if (stricmp(message, "SetDualRender") == 0) {
         bool v = static_cast<bool>(pMsg->data);
-        printf(PREFIX "SetDualRender(%s)\n", (v?"true":"false"));
+        printf(PREFIX "%s(%s)\n", message, (v?"true":"false"));
         g_Periapt.dualRender = v;
     }
-    else if (stricmp(pMsg->message, "SetDualOffset") == 0) {
+    else if (stricmp(message, "SetDualOffset") == 0) {
         const mxs_vector *v = static_cast<const mxs_vector *>(pMsg->data);
         if (v) {
-            printf(PREFIX "SetDualOffset(<%0.3f,%0.3f,%0.3f>)\n", v->x, v->y, v->z);
+            printf(PREFIX "%s(<%0.3f,%0.3f,%0.3f>)\n", message, v->x, v->y, v->z);
             g_Periapt.dualOffset.x = v->x;
             g_Periapt.dualOffset.y = v->y;
             g_Periapt.dualOffset.z = v->z;
         } else {
-            printf(PREFIX "SetDualOffset(<not a vector>)\n");
+            printf(PREFIX "%s(<not a vector>)\n", message);
         }
     }
-    else if (stricmp(pMsg->message, "SetDualCull") == 0) {
+    else if (stricmp(message, "SetDualCull") == 0) {
         bool v = static_cast<bool>(pMsg->data);
-        printf(PREFIX "SetDualCull(%s)\n", (v?"true":"false"));
+        printf(PREFIX "%s(%s)\n", message, (v?"true":"false"));
         g_Periapt.dualCull = v;
     }
-    else if (stricmp(pMsg->message, "SetDualCullRect") == 0) {
-        const mxs_vector *v0 = static_cast<const mxs_vector *>(pMsg->data);
-        const mxs_vector *v1 = static_cast<const mxs_vector *>(pMsg->data2);
-        if (v0 && v1) {
-            printf(PREFIX "SetDualCullRect(<%0.3f,%0.3f,%0.3f>, <%0.3f,%0.3f,%0.3f>)\n",
-                v0->x, v0->y, v0->z, v1->x, v1->y, v1->z);
-            g_Periapt.dualCullLeft = v0->x;
-            g_Periapt.dualCullTop = v0->y;
-            g_Periapt.dualCullRight = v1->x;
-            g_Periapt.dualCullBottom = v1->y;
-            if (g_Periapt.dualCullLeft<0) g_Periapt.dualCullLeft = 0;
-            if (g_Periapt.dualCullLeft>1) g_Periapt.dualCullLeft = 1;
-            if (g_Periapt.dualCullTop<0) g_Periapt.dualCullTop = 0;
-            if (g_Periapt.dualCullTop>1) g_Periapt.dualCullTop = 1;
-            if (g_Periapt.dualCullRight<0) g_Periapt.dualCullRight = 0;
-            if (g_Periapt.dualCullRight>1) g_Periapt.dualCullRight = 1;
-            if (g_Periapt.dualCullBottom<0) g_Periapt.dualCullBottom = 0;
-            if (g_Periapt.dualCullBottom>1) g_Periapt.dualCullBottom = 1;
-        } else {
-            printf(PREFIX "SetDualCullRect(<not a vector>, <not a vector>)\n");
-        }
-    }
-    else if (stricmp(pMsg->message, "SetDepthCull") == 0) {
+    else if (stricmp(message, "SetDepthCull") == 0) {
         bool v = static_cast<bool>(pMsg->data);
-        printf(PREFIX "SetDepthCull(%s)\n", (v?"true":"false"));
+        printf(PREFIX "%s(%s)\n", message, (v?"true":"false"));
         g_Periapt.depthCull = v;
     }
-    else if (stricmp(pMsg->message, "SetDepthCullDistance") == 0) {
+    else if (stricmp(message, "SetDepthCullDistance") == 0) {
         float d = static_cast<float>(pMsg->data);
-        printf(PREFIX "SetDepthCullDistance(%0.3f)\n", d);
+        printf(PREFIX "%s(%0.3f)\n", message, d);
         if (d>0) {
             g_Periapt.depthCullDistance = d;
         }
