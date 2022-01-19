@@ -821,6 +821,7 @@ static struct {
     bool isRenderingDual;
     bool isDrawingOverlays;
     bool isDrawingPeriapt;
+    bool didDrawPeriapt;
     bool dontClearTarget;
     bool dontClearStencil;
     bool texturesReady;
@@ -1299,6 +1300,10 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
     // TODO: make sure that the periapt is only ever opaque and nonfunctional
     // before textures and vertices are ready?
+    //
+    // Reset necessary state at the start of the frame.
+    g_State.didDrawPeriapt = false;
+
 
     #define LOOP_FADE_AND_TRANSITION 0
 
@@ -1425,17 +1430,15 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCILREF_DUAL);
         g_State.dontClearTarget = false;
         g_State.dontClearStencil = false;
-    } else {
-        printf("Dual disabled and not transitioning: skipping dual world render\n");
     }
 
-    // TODO: this is gonna be wrong for transitioning, right?
-    // TODO: we _definitely_ only want to do this when the periapt is equipped.
-    // Draw facets over the whole thing, including whatever is in
-    // the crystal.
-    if (g_State.texturesReady && g_State.verticesReady) {
-        device->Clear(0, NULL, D3DCLEAR_ZBUFFER, 0, 1.0f, 0);
-        DrawPeriapt(device, PERIAPT_FACETS);
+    if (g_State.didDrawPeriapt) {
+        // Draw facets over the whole thing, including whatever is in
+        // the crystal.
+        if (g_State.texturesReady && g_State.verticesReady) {
+            device->Clear(0, NULL, D3DCLEAR_ZBUFFER, 0, 1.0f, 0);
+            DrawPeriapt(device, PERIAPT_FACETS);
+        }
     }
 }
 
@@ -1469,6 +1472,8 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
     }
 
     if (g_State.isDrawingPeriapt) {
+        g_State.didDrawPeriapt = true;
+
         IDirect3DDevice9* device = *t2_d3d9device_ptr;
         if (g_State.isTransitioning
         && g_State.isTransitionFirstHalf) {
