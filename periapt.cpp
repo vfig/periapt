@@ -428,7 +428,7 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x005d915cUL,       // d3d9device_ptr
         0x005ce4d8UL,       // modelnameprop
         0x00460bf0UL,       // portal_camera_pos
-        0,                  // matcache
+        0x0054f190UL,       // matcache
     },
     // ExeDromEd_v127
     {
