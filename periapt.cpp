@@ -2029,6 +2029,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         // Decide accordingly how to handle console output.
         BOOL shouldAllocConsole = (!isEditor || !isIdentified);
         BOOL shouldRedirectStdout = (isEditor || shouldAllocConsole);
+		shouldAllocConsole = shouldRedirectStdout = FALSE;
         if (shouldAllocConsole) {
             didAllocConsole = AllocConsole();
         }
