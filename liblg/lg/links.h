@@ -19,7 +19,9 @@
 #pragma interface "lg/links.h"
 #endif
 
+extern "C" {
 extern  const GUID  IID_ILinkQuery;
+}
 interface ILinkQuery : IUnknown
 {
 	STDMETHOD_(int,Done)(void) const PURE;
@@ -51,7 +53,9 @@ struct sRelationDataDesc
 	unsigned int uiTypeSize;
 };
 
+extern "C" {
 extern  const GUID  IID_IRelation;
+}
 interface IRelation : IUnknown
 {
 	// This function returns information about the relation

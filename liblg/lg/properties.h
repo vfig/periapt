@@ -43,7 +43,9 @@ DECLARE_HANDLE(PropListenerData);
 
 typedef void (__stdcall *PropListenFunc)(sPropertyListenMsg*,PropListenerData);
 
+extern "C" {
 extern  const GUID  IID_IProperty;
+}
 interface IProperty : IUnknown
 {
 	STDMETHOD_(const sPropertyDesc*,Describe)(void) const PURE;
@@ -73,7 +75,9 @@ interface IGenericProperty : IProperty
 	STDMETHOD_(int,IterNextValue)(sPropertyObjIter*,int*,void**) const PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IIntProperty;
+}
 interface IIntProperty : IProperty
 {
 	STDMETHOD_(int,Set)(int,int) PURE;
@@ -83,10 +87,14 @@ interface IIntProperty : IProperty
 	STDMETHOD_(int,IterNextValue)(sPropertyObjIter*,int*,int*) const PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IBoolProperty;
+}
 #define IBoolProperty IIntProperty
 
+extern "C" {
 extern  const GUID  IID_IFloatProperty;
+}
 interface IFloatProperty : IProperty
 {
 	STDMETHOD_(int,Set)(int,float) PURE;
@@ -96,7 +104,9 @@ interface IFloatProperty : IProperty
 	STDMETHOD_(int,IterNextValue)(sPropertyObjIter*,int*,float*) const PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IStringProperty;
+}
 interface IStringProperty : IProperty
 {
 	STDMETHOD_(int,Set)(int,const char*) PURE;
@@ -106,7 +116,9 @@ interface IStringProperty : IProperty
 	STDMETHOD_(int,IterNextValue)(sPropertyObjIter*,int*,const char* *) const PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IVectorProperty;
+}
 interface IVectorProperty : IProperty
 {
 	STDMETHOD_(int,Set)(int,const mxs_vector*) PURE;
@@ -116,6 +128,7 @@ interface IVectorProperty : IProperty
 	STDMETHOD_(int,IterNextValue)(sPropertyObjIter*,int*,mxs_vector**) const PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_ILabelProperty;
 
 extern  const GUID  IID_IInvRenderProperty;
@@ -143,6 +156,6 @@ extern  const GUID  IID_IPhysStateProperty;
 extern  const GUID  IID_IRendFlashProperty;
 
 extern  const GUID  IID_IScriptProperty;
-
+}
 
 #endif // _LG_PROPERTIES_H

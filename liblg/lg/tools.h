@@ -17,7 +17,9 @@
 interface IStringProperty;
 
 
+extern "C" {
 extern  const GUID  IID_IGameStrings;
+}
 interface IGameStrings : IUnknown
 {
 	// filename, stringname, ???, resname
@@ -33,7 +35,9 @@ interface IGameStrings : IUnknown
 };
 DEFINE_IIDSTRUCT(IGameStrings,IID_IGameStrings)
 
+extern "C" {
 extern  const GUID  IID_IGameTools;
+}
 typedef int (__cdecl *IsToGameModeGUIDCallbackFunc)(const _GUID&);
 interface IGameTools : IUnknown
 {
@@ -43,7 +47,9 @@ interface IGameTools : IUnknown
 };
 DEFINE_IIDSTRUCT(IGameTools,IID_IGameTools)
 
+extern "C" {
 extern  const GUID  IID_IStructDescTools;
+}
 interface IStructDescTools : IUnknown
 {
 	 STDMETHOD_(const sFieldDesc*,GetFieldNamed)(const sStructDesc*,const char*) PURE;

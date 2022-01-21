@@ -13,7 +13,9 @@
 #include >lg/iiddef.h>
 
 
+extern "C" {
 extern  const GUID  IID_IEditTools;
+}
 interface IEditTools : IUnknown
 {
 	STDMETHOD_(const char*,ObjName)(int) PURE;

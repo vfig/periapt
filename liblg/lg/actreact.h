@@ -3,7 +3,9 @@ struct sStimSourceDesc
 {
 };
 
+extern "C" {
 extern  const GUID  IID_IPropagator;
+}
 interface IPropagator : IUnknown
 {
 	STDMETHOD_(const sPropagatorDesc *,Describe)(void) const PURE;
@@ -25,7 +27,9 @@ interface IPropagator : IUnknown
 	STDMETHOD_(long,Stop)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IPropagatorQuery;
+}
 interface IPropagatorQuery : IUnknown
 {
 	STDMETHOD_(long,Start)(void) PURE;
@@ -35,7 +39,9 @@ interface IPropagatorQuery : IUnknown
 	STDMETHOD_(IPropagator*,Propagator)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IReactionQuery;
+}
 interface IReactionQuery : IUnknown
 {
 	STDMETHOD_(long,Start)(void) PURE;
@@ -44,8 +50,10 @@ interface IReactionQuery : IUnknown
 	STDMETHOD_(unsigned long,ID)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IStimSensorQuery ;
 extern  const GUID  IID_IStimSourceQuery ;
+}
 
 struct sReactionDesc
 {
@@ -63,7 +71,9 @@ struct sReactionParam
 {
 };
 
+extern "C" {
 extern  const GUID  IID_IReactions;
+}
 interface IReactions : IUnknown
 {
 	STDMETHOD_(unsigned long,Add)(sReactionDesc*,unsigned long (__stdcall *)(sReactionEvent*,const sReactionParam*,void*),void*) PURE;
@@ -74,11 +84,13 @@ interface IReactions : IUnknown
 };
 DEFINE_IIDSTRUCT(IReactions,IID_IReactions)
 
+extern "C" {
 extern  const GUID  IID_IStimSensors ;
 extern  const GUID  IID_IStimSources ;
 extern  const GUID  IID_IStimulator ;
 extern  const GUID  IID_IStimuli ;
 extern  const GUID  IID_IPeriodicPropagator ;
+}
 
 struct sStimSensorEvent
 {
@@ -87,7 +99,9 @@ struct sStimSourceEvent
 {
 };
 
+extern "C" {
 extern  const GUID  IID_IPropagation ;
+}
 interface IPropagation : IUnknown
 {
 	STDMETHOD_(unsigned long,AddPropagator)(IPropagator*) PURE;

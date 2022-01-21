@@ -22,7 +22,9 @@ interface IScriptServiceBase : IUnknown
 	STDMETHOD_(void,End)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IActReactScriptService;
+}
 interface IActReactSrv : IScriptServiceBase
 {
 /*** React - Execute a reaction response.
@@ -96,7 +98,9 @@ interface IActReactSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IActReactSrv,IID_IActReactScriptService)
 
+extern "C" {
 extern  const GUID  IID_IAIScriptService;
+}
 interface IAIScrSrv : IScriptServiceBase
 {
 /*** MakeGotoObjLoc - Instruct an AI to go to the current location of an object.
@@ -161,7 +165,9 @@ interface IAIScrSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IAIScrSrv,IID_IAIScriptService)
 
+extern "C" {
 extern  const GUID  IID_IAnimTextureScriptService;
+}
 interface IAnimTextureSrv : IScriptServiceBase
 {
 /*** ChangeTexture - Swap one texture on nearby polygons.
@@ -176,7 +182,9 @@ interface IAnimTextureSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IAnimTextureSrv,IID_IAnimTextureScriptService)
 
+extern "C" {
 extern  const GUID  IID_IBowScriptService;
+}
 interface IBowSrv : IScriptServiceBase
 {
 /*** Equip - Set the bow as the current weapon.
@@ -212,7 +220,9 @@ interface IBowSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(IBowSrv,IID_IBowScriptService)
 
 #if (_DARKGAME == 2)
+extern "C" {
 extern  const GUID  IID_ICameraScriptService;
+}
 interface ICameraSrv : IScriptServiceBase
 {
 /*** StaticAttach - Attach camera to object. Do not allow freelook.
@@ -238,7 +248,9 @@ interface ICameraSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(ICameraSrv,IID_ICameraScriptService)
 #endif
 
+extern "C" {
 extern  const GUID  IID_IContainerScriptService;
+}
 interface IContainSrv : IScriptServiceBase
 {
 /*** Add - Move an object into a container.
@@ -279,7 +291,9 @@ interface IContainSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IContainSrv,IID_IContainerScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDamageScriptService;
+}
 interface IDamageSrv : IScriptServiceBase
 {
 /*** Damage - Cause damage to an object.
@@ -305,7 +319,9 @@ interface IDamageSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDamageSrv,IID_IDamageScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDarkGameScriptService;
+}
 interface IDarkGameSrv : IScriptServiceBase
 {
 /*** KillPlayer - Garrett dies. Ignored if no_endgame is set.
@@ -365,7 +381,9 @@ interface IDarkGameSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDarkGameSrv,IID_IDarkGameScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDarkUIScriptService;
+}
 interface IDarkUISrv : IScriptServiceBase
 {
 /*** TextMessage - Display a string on the screen.
@@ -407,7 +425,9 @@ interface IDarkUISrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDarkUISrv,IID_IDarkUIScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDataScriptService;
+}
 interface IDataSrv : IScriptServiceBase
 {
 /*** GetString - Retrieve a string from a resource file.
@@ -445,7 +465,9 @@ interface IDataSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDataSrv,IID_IDataScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDebugScriptService;
+}
 interface IDebugScrSrv : IScriptServiceBase
 {
 /*** MPrint - Send string(s) to the mono.
@@ -468,7 +490,9 @@ interface IDebugScrSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDebugScrSrv,IID_IDebugScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDoorScriptService;
+}
 interface IDoorSrv : IScriptServiceBase
 {
 /*** CloseDoor - Closes a door.
@@ -507,7 +531,9 @@ interface IDoorSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDoorSrv,IID_IDoorScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDrkInvScriptService;
+}
 enum eDrkInvCap
 {
 	kDrkInvCapCycle,
@@ -541,7 +567,9 @@ interface IDarkInvSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDarkInvSrv,IID_IDrkInvScriptService)
 
+extern "C" {
 extern  const GUID  IID_IDrkPowerupsScriptService;
+}
 interface IDarkPowerupsSrv : IScriptServiceBase
 {
 /*** TriggerWorldFlash - Create a blinding flash.
@@ -562,7 +590,9 @@ interface IDarkPowerupsSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IDarkPowerupsSrv,IID_IDrkPowerupsScriptService)
 
+extern "C" {
 extern  const GUID  IID_IKeyScriptService;
+}
 interface IKeySrv : IScriptServiceBase
 {
 /*** TryToUseKey - Use or test a key on an object.
@@ -575,7 +605,9 @@ interface IKeySrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IKeySrv,IID_IKeyScriptService)
 
+extern "C" {
 extern  const GUID  IID_ILightScriptService;
+}
 interface ILightScrSrv : IScriptServiceBase
 {
 /*** Set - Set the mode and min/max values of the light.
@@ -614,7 +646,9 @@ interface ILightScrSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(ILightScrSrv,IID_ILightScriptService)
 
+extern "C" {
 extern  const GUID  IID_ILinkScriptService;
+}
 interface ILinkSrv : IScriptServiceBase
 {
 /*** Create - Add a link between two objects.
@@ -696,7 +730,9 @@ interface ILinkSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(ILinkSrv,IID_ILinkScriptService)
 
+extern "C" {
 extern  const GUID  IID_ILinkToolsScriptService;
+}
 interface ILinkToolsSrv : IScriptServiceBase
 {
 /*** LinkKindNamed - Get the ID of a link flavor
@@ -731,7 +767,9 @@ interface ILinkToolsSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(ILinkToolsSrv,IID_ILinkToolsScriptService)
 
+extern "C" {
 extern  const GUID  IID_ILockedScriptService;
+}
 interface ILockSrv : IScriptServiceBase
 {
 /*** IsLocked - Test whether an object has the Locked property set.
@@ -743,7 +781,9 @@ interface ILockSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(ILockSrv,IID_ILockedScriptService)
 
 #if (_DARKGAME == 3) || ((_DARKGAME == 2) && (_NETWORKING == 1))
+extern "C" {
 extern  const GUID  IID_INetworkingScriptService;
+}
 interface INetworkingSrv : IScriptServiceBase
 {
 	STDMETHOD_(long,Broadcast)(const object &,const char*,int,const cMultiParm &) PURE;
@@ -768,9 +808,13 @@ interface INetworkingSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(INetworkingSrv,IID_INetworkingScriptService)
 #endif
 
+extern "C" {
 extern  const GUID  IID_INullScriptService;
+}
 
+extern "C" {
 extern  const GUID  IID_IObjectScriptService;
+}
 interface IObjectSrv : IScriptServiceBase
 {
 /*** BeginCreate - Do the first half of a two-stage object creation.
@@ -902,7 +946,9 @@ interface IObjectSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IObjectSrv,IID_IObjectScriptService)
 
+extern "C" {
 extern  const GUID  IID_IPGroupScriptService;
+}
 interface IPGroupSrv : IScriptServiceBase
 {
 /*** SetActive - Turn a particle SFX on or off.
@@ -920,7 +966,9 @@ enum ePhysMsgType {
 	kPhysEnterExit = 4,
 	kPhysFellAsleep = 8
 };
+extern "C" {
 extern  const GUID  IID_IPhysicsScriptService;
+}
 interface IPhysSrv : IScriptServiceBase
 {
 /*** SubscribeMsg - Register an object to receive certain messages.
@@ -1035,7 +1083,9 @@ interface IPhysSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IPhysSrv,IID_IPhysicsScriptService)
 
+extern "C" {
 extern  const GUID  IID_IPickLockScriptService;
+}
 interface IPickLockSrv : IScriptServiceBase
 {
 /*** Ready - Prepare a pick.
@@ -1077,7 +1127,9 @@ interface IPickLockSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IPickLockSrv,IID_IPickLockScriptService)
 
+extern "C" {
 extern  const GUID  IID_IPlayerLimbsScriptService;
+}
 interface IPlayerLimbsSrv : IScriptServiceBase
 {
 /*** Equip - Display the player arm.
@@ -1103,7 +1155,9 @@ interface IPlayerLimbsSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IPlayerLimbsSrv,IID_IPlayerLimbsScriptService)
 
+extern "C" {
 extern  const GUID  IID_IPropertyScriptService;
+}
 interface IPropertySrv : IScriptServiceBase
 {
 /*** Get - Retrieve some data from a property.
@@ -1163,7 +1217,9 @@ interface IPropertySrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IPropertySrv,IID_IPropertyScriptService)
 
+extern "C" {
 extern  const GUID  IID_IPuppetScriptService;
+}
 interface IPuppetSrv : IScriptServiceBase
 {
 /*** PlayMotion - Play a motion schema on an object.
@@ -1175,7 +1231,9 @@ interface IPuppetSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IPuppetSrv,IID_IPuppetScriptService)
 
+extern "C" {
 extern  const GUID  IID_IQuestScriptService;
+}
 interface IQuestSrv : IScriptServiceBase
 {
 /*** SubscribeMsg - Register an object to receive notifications when a quest variable changes.
@@ -1217,7 +1275,9 @@ interface IQuestSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(IQuestSrv,IID_IQuestScriptService)
 
 #if (_DARKGAME == 3) || ((_DARKGAME == 1) && (_SHOCKINTERFACES == 1))
+extern "C" {
 extern  const GUID  IID_IShockGameScriptService;
+}
 interface IShockGameSrv : IScriptServiceBase
 {
 	STDMETHOD_(long,DestroyCursorObj)(void) PURE;
@@ -1340,7 +1400,9 @@ interface IShockGameSrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IShockGameSrv,IID_IShockGameScriptService)
 
+extern "C" {
 extern  const GUID  IID_IShockObjScriptService;
+}
 interface IShockObjSrv : IScriptServiceBase
 {
 	STDMETHOD_(int,FindScriptDonor)(int,cScrStr) PURE;
@@ -1350,7 +1412,9 @@ DEFINE_IIDSTRUCT(IShockObjSrv,IID_IShockObjScriptService)
 
 /* These arguments were originally an enum. 
  */
+extern "C" {
 extern  const GUID  IID_IShockPsiScriptService;
+}
 interface IShockPsiSrv : IScriptServiceBase
 {
 	STDMETHOD_(long,OnDeactivate)(int) PURE;
@@ -1363,7 +1427,9 @@ DEFINE_IIDSTRUCT(IShockPsiSrv,IID_IShockPsiScriptService)
 #endif
 
 #if (_DARKGAME == 3)
+extern "C" {
 extern  const GUID  IID_IShockAIScriptService;
+}
 interface IShockAISrv : IScriptServiceBase
 {
 	STDMETHOD_(int,Stun)(object,cScrStr,cScrStr,float) PURE;
@@ -1379,7 +1445,9 @@ interface IShockAISrv : IScriptServiceBase
 };
 DEFINE_IIDSTRUCT(IShockAISrv,IID_IShockAIScriptService)
 
+extern "C" {
 extern  const GUID  IID_IShockWeaponScriptService;
+}
 interface IShockWeaponSrv : IScriptServiceBase
 {
 	STDMETHOD_(void,SetWeaponModel)(const object &) PURE;
@@ -1391,7 +1459,9 @@ interface IShockWeaponSrv : IScriptServiceBase
 DEFINE_IIDSTRUCT(IShockWeaponSrv,IID_IShockWeaponScriptService)
 #endif
 
+extern "C" {
 extern  const GUID  IID_ISoundScriptService;
+}
 #if (_DARKGAME != 1)
 #define SOUND_NET  ,eSoundNetwork
 #else
@@ -1508,7 +1578,9 @@ interface ISoundScrSrv : IScriptServiceBase
 #undef SOUND_NET
 DEFINE_IIDSTRUCT(ISoundScrSrv,IID_ISoundScriptService)
 
+extern "C" {
 extern  const GUID  IID_IWeaponScriptService;
+}
 interface IWeaponSrv : IScriptServiceBase
 {
 /*** Equip - Select an object as the current weapon.

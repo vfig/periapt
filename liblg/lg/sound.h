@@ -1,7 +1,9 @@
 #include <lg/objstd.h>
 #include <mmsystem.h>
 
+extern "C" {
 extern  const GUID  IID_ICDPlayer;
+}
 interface ICDPlayer : IUnknown
 {
 	STDMETHOD_(long,Init)(void) PURE;
@@ -18,7 +20,9 @@ DEFINE_IIDSTRUCT(ICDPlayer,IID_ICDPlayer)
 
 interface ISong;
 
+extern "C" {
 extern  const GUID  IID_ISongPlayer;
+}
 interface ISongPlayer : IUnknown
 {
 	STDMETHOD_(int,SetSong)(ISong*) PURE;
@@ -39,7 +43,9 @@ interface ISongPlayer : IUnknown
 };
 DEFINE_IIDSTRUCT(ISongPlayer,IID_ISongPlayer)
 
+extern "C" {
 extern  const GUID  IID_IVoiceOverSys;
+}
 interface IVoiceOverSys : IUnknown
 {
 	STDMETHOD_(int,Play)(int) PURE;

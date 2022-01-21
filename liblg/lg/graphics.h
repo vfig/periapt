@@ -44,7 +44,9 @@ struct grs_bitmap
 	unsigned short unknown3;
 };
 
+extern "C" {
 extern  const GUID  IID_IDisplayDevice;
+}
 interface IDisplayDevice : IUnknown
 {
 	STDMETHOD_(eDisplayDeviceKind,GetKind)(void) PURE;

@@ -1,0 +1,157 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="periapt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Script.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ScriptModule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="liblg\iids.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="liblg\lg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="liblg\scrmsgs.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="script.def">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="bypass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Script.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ScriptModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="scriptvars.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="t2types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\actreact.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\ai.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\config.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\convict.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\defs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\dynarray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\editor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\gen.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\graphics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\iiddef.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\iids.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\input.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\interface.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\links.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\malloc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\miss16.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\objects.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\objstd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\propdefs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\properties.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\quest.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\res.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\script.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\scrmanagers.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\scrmsgs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\scrservices.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\sound.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\tools.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\win.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="liblg\lg\dynarray.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="bypass.asm">
+      <Filter>Source Files</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>

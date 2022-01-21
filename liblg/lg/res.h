@@ -1,5 +1,7 @@
 
+extern "C" {
 extern  const GUID  IID_IRes;
+}
 interface IRes : IUnknown
 {
 	virtual void* Lock(void) = 0;
@@ -46,12 +48,14 @@ void GetCanonPath(char**)
 void SetData(void*)
 void ExtractBlocks(void*, long, long (*)(IRes*,void*,long,long,void*),void*)
 */
+extern "C" {
 extern  const GUID  IID_IResControl;
 extern  const GUID  IID_IResHack;
 extern  const GUID  IID_IResMem;
 extern  const GUID  IID_IResMemOverride;
 extern  const GUID  IID_IResStats;
 extern  const GUID  IID_IResType;
+}
 interface IResType : IUnknown
 {
 	virtual char const * GetName(void) = 0;
@@ -60,7 +64,9 @@ interface IResType : IUnknown
 	virtual IRes * CreateRes(IStore *, char const *, char const *, IResMemOverride **) = 0;
 };
 
+extern "C" {
 extern  const GUID  IID_ISearchPath;
+}
 interface ISearchPath : IUnknown
 {
 	STDMETHOD_(void,Clear)(void) PURE;
@@ -79,4 +85,6 @@ STDMETHOD_(void,SetVariants)(ISearchPath*) PURE;
 STDMETHOD_(void,EndContents)(void*) PURE;
 */
 
+extern "C" {
 extern  const GUID  IID_IStringRes ;
+}

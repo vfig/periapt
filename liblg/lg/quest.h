@@ -5,7 +5,9 @@
 #pragma once
 #endif
 
+extern "C" {
 extern  const GUID  IID_IQuestDataIter;
+}
 interface IQuestDataIter : IUnknown
 {
 	STDMETHOD_(int,Done)(void) PURE;
@@ -14,7 +16,9 @@ interface IQuestDataIter : IUnknown
 	STDMETHOD_(int,Value)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IQuestData;
+}
 interface IQuestData : IUnknown
 {
 	STDMETHOD_(long,Create)(const char *,int) PURE;
@@ -36,6 +40,8 @@ interface IQuestData : IUnknown
 };
 DEFINE_IIDSTRUCT(IQuestData,IID_IQuestData)
 
+extern "C" {
 extern  const GUID  IID_ICampaign ;
+}
 
 #endif // _LG_QUEST_H

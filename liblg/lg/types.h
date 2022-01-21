@@ -379,7 +379,7 @@ public:
 	cMultiParm (float fval)
 		{ f = fval; type = kMT_Float; }
 	cMultiParm (double fval)
-		{ f = fval; type = kMT_Float; }
+		{ f = static_cast<float>(fval); type = kMT_Float; }
 	cMultiParm (bool bval)
 		{ b = bval; type = kMT_Boolean; }
 	cMultiParm (true_bool& bval)

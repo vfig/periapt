@@ -1,3 +1,22 @@
 *.a
 *.o
 *.osm
+
+# Enormous piles of Visual Studio shite
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+Debug/
+Release/
+.vs/
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb

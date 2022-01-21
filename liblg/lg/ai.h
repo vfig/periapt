@@ -4,12 +4,16 @@
 
 interface IInternalAI;
 
+extern "C" {
 extern  const GUID  IID_IAIPathfindControl;
 extern  const GUID  IID_IAIPathQuery;
+}
 
 class cAIPathEdge;
 
+extern "C" {
 extern  const GUID  IID_IAIPath;
+}
 interface IAIPath : IUnknown
 {
 	virtual void* f0(void) =0;
@@ -38,7 +42,9 @@ struct sAISoundType;
 
 interface IAIActor;
 
+extern "C" {
 extern  const GUID  IID_IAIAction;
+}
 interface IAIAction : IUnknown
 {
 	STDMETHOD_(void,Describe)(cAnsiStr *) PURE;
@@ -71,7 +77,9 @@ class cAIMoveSuggestions;
 struct sPhysListenMsg;
 struct sPropertyListenMsg;
 
+extern "C" {
 extern  const GUID  IID_IAIComponent;
+}
 interface IAIComponent : IUnknown
 {
 	STDMETHOD_(void,GetSubComponents)(cDynArray<IAIComponent *> *) PURE;
@@ -126,7 +134,9 @@ interface IAIComponent : IUnknown
 	STDMETHOD_(int,LoadGoal(ITagFile *,cAIGoal * *)
 */
 
+extern "C" {
 extern  const GUID  IID_IAIConversation;
+}
 interface IAIConversation : IUnknown
 {
 	STDMETHOD_(void,OnStateChange)(int,eAIConverseState,eAIConverseState) PURE;
@@ -137,7 +147,9 @@ interface IAIConversation : IUnknown
 
 struct sAIPsdScrAct;
 
+extern "C" {
 extern  const GUID  IID_IAIConverse;
+}
 interface IAIConverse : IUnknown
 {
 	STDMETHOD_(void,Start)(IAIConversation *,int) PURE;
@@ -149,10 +161,12 @@ interface IAIConverse : IUnknown
 	STDMETHOD_(int,GetCurrentAction)(void) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IAIAbility;
 extern  const GUID  IID_IAIAppServices;
 extern  const GUID  IID_IAIInform;
 extern  const GUID  IID_IAIMoveRegulator;
+}
 interface IAIMoveAction;
 interface IAILocoAction;
 interface IAIMotionAction;
@@ -171,7 +185,9 @@ interface IAIJointScanAction;
 
 class cAIActor;
 
+extern "C" {
 extern  const GUID  IID_IAIBehaviorSet;
+}
 interface IAIBehaviorSet : IUnknown
 {
 	STDMETHOD_(const char*,GetName)(void) PURE;
@@ -203,17 +219,21 @@ interface IAIBehaviorSet : IUnknown
 	STDMETHOD_(IAIAction*,LoadAndCreateAction)(ITagFile *,cAIActor *) PURE;
 };
 
+extern "C" {
 extern  const GUID  IID_IAIMoveEnactor;
 extern  const GUID  IID_IAISoundEnactor;
 extern  const GUID  IID_IAISenses;
 extern  const GUID  IID_IAIPathfinder;
+}
 
 interface IAIMoveEnactor;
 interface IAISoundEnactor;
 interface IAISenses;
 interface IAIPathfinder;
 
+extern "C" {
 extern  const GUID  IID_IAI;
+}
 interface IAI : IUnknown
 {
 	STDMETHOD_(unsigned long,DataSize)(void) PURE;

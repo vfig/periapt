@@ -39,7 +39,9 @@ interface ITagFile;
 interface ITrait;
 
 
+extern "C" {
 extern  const GUID  IID_IAIManager;
+}
 DECLARE_HANDLE(tAIIter);
 interface IAIManager : IUnknown
 {
@@ -86,7 +88,9 @@ interface IAIManager : IUnknown
  */
 DEFINE_IIDSTRUCT(IAIManager,IID_IAIManager)
 
+extern "C" {
 extern  const GUID  IID_IAIConversationManager;
+}
 struct IAIConversationManager : IUnknown
 {
 	STDMETHOD_(int,Start)(int) PURE;
@@ -106,7 +110,9 @@ struct IAIConversationManager : IUnknown
 };
 DEFINE_IIDSTRUCT(IAIConversationManager,IID_IAIConversationManager)
 
+extern "C" {
 extern  const GUID  IID_IInputManager;
+}
 struct sInputDeviceIter
 {
 };
@@ -119,7 +125,9 @@ interface IInputManager : IUnknown
 };
 DEFINE_IIDSTRUCT(IInputManager,IID_IInputManager)
 
+extern "C" {
 extern  const GUID  IID_ILinkManager;
+}
 struct sRelationIter
 {
     int unknown;
@@ -201,9 +209,13 @@ interface ILinkManager : IUnknown
 };
 DEFINE_IIDSTRUCT(ILinkManager,IID_ILinkManager)
 
+extern "C" {
 extern  const GUID  IID_ILinkManagerInternal;
+}
 
+extern "C" {
 extern  const GUID  IID_ILoopManager;
+}
 DECLARE_HANDLE(tLoopClientData);
 struct sLoopModeDesc
 {
@@ -224,7 +236,9 @@ interface ILoopManager : IUnknown
 DEFINE_IIDSTRUCT(ILoopManager,IID_ILoopManager)
 
 /*
+extern "C" {
 extern  const GUID  IID_INetManager;
+}
 interface INetManager : IUnknown
 {
 	STDMETHOD_(int,Networking)(void) PURE;
@@ -272,7 +286,9 @@ interface INetManager : IUnknown
 };
 */
 
+extern "C" {
 extern  const GUID  IID_IPropertyManager;
+}
 struct sPropertyIter
 {
 	int unknown;
@@ -289,7 +305,9 @@ interface IPropertyManager : IUnknown
 };
 DEFINE_IIDSTRUCT(IPropertyManager,IID_IPropertyManager)
 
+extern "C" {
 extern  const GUID  IID_IResMan;
+}
 interface IResMan : IUnknown
 {
 	STDMETHOD_(ISearchPath*,NewSearchPath)(const char *) PURE;
@@ -310,7 +328,9 @@ interface IResMan : IUnknown
 };
 DEFINE_IIDSTRUCT(IResMan,IID_IResMan)
 
+extern "C" {
 extern  const GUID  IID_IResManHelper;
+}
 interface IResManHelper : IUnknown
 {
 	STDMETHOD_(void*,LockResource)(IRes *) PURE;
@@ -340,9 +360,13 @@ interface IResManHelper : IUnknown
 */
 DEFINE_IIDSTRUCT(IResManHelper,IID_IResManHelper)
 
+extern "C" {
 extern  const GUID  IID_IResManHelper;
+}
 
+extern "C" {
 extern  const GUID  IID_IScriptMan;
+}
 enum eScrTimedMsgKind {
 	kSTM_OneShot,
 	kSTM_Periodic
@@ -479,7 +503,9 @@ interface IScriptMan : IUnknown
 };
 DEFINE_IIDSTRUCT(IScriptMan,IID_IScriptMan)
 
+extern "C" {
 extern  const GUID  IID_ISimManager;
+}
 interface ISimManager : IUnknown
 {
 	// IBaseSimMan
@@ -494,7 +520,9 @@ interface ISimManager : IUnknown
 };
 DEFINE_IIDSTRUCT(ISimManager,IID_ISimManager)
 
+extern "C" {
 extern  const GUID  IID_IStorageManager;
+}
 interface IStorageManager : IUnknown
 {
 	STDMETHOD_(void,RegisterFactory)(IStoreFactory *) PURE;
@@ -508,9 +536,13 @@ interface IStorageManager : IUnknown
 };
 DEFINE_IIDSTRUCT(IStorageManager,IID_IStorageManager)
 
+extern "C" {
 extern  const GUID  IID_IThreadManager;
+}
 
+extern "C" {
 extern  const GUID  IID_ITraitManager;
+}
 struct sTraitPredicate
 {
 };

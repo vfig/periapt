@@ -33,7 +33,9 @@ void IWindowsApplication::SetDefaultFilePath(const char*);
 void IWindowsApplication::Quit(void);
 */
 
+extern "C" {
 extern  const GUID  IID_IWinApp;
+}
 
 enum eWinPumpResult
 {
@@ -77,7 +79,9 @@ DEFINE_IIDSTRUCT(IWinApp,IID_IWinApp)
 	STDMETHOD_(int,IsLocked)(void) PURE;
 	STDMETHOD_(void,FlushRect)(int,int,int,int) PURE;
 */
+extern "C" {
 extern  const GUID  IID_IWinDisplayDevice;
+}
 struct sWinDispDevCallbackInfo
 {
 };
@@ -98,7 +102,9 @@ interface IWinDispDevice : IUnknown
 };
 DEFINE_IIDSTRUCT(IWinDispDevice,IID_IWinDisplayDevice)
 
+extern "C" {
 extern  const GUID  IID_IGameShell;
+}
 interface IWinGameShell : IUnknown
 {
 	STDMETHOD_(void,BeginFrame)(void) PURE;

@@ -13,9 +13,13 @@
 #include <lg/iiddef.h>
 
 
+extern "C" {
 extern  const GUID  IID_IInputDevice;
+}
 
+extern "C" {
 extern  const GUID  IID_IInputBinder;
+}
 
 struct _ui_event
 {

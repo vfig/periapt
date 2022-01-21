@@ -30,7 +30,6 @@
 #include <new>
 #include <exception>
 #include <string>
-#include <strings.h>
 
 using namespace std;
 

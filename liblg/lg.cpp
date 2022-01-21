@@ -1,9 +1,11 @@
-
+#ifdef __GNUC__
 #pragma implementation "lg/interface.h"
 #pragma implementation "lg/types.h"
 #pragma implementation "lg/links.h"
 #pragma implementation "lg/dynarray.h"
+#endif
 
+#define NOMINMAX
 #include <math.h>
 #include <algorithm>
 #include <cctype>
@@ -200,7 +202,7 @@ cMultiParm::operator float () const
 		return f;
 	  case kMT_String:
 		if (psz)
-			return strtod(psz,NULL);
+			return static_cast<float>(strtod(psz,NULL));
 		break;
 	  case kMT_Vector:
 		break;
@@ -216,17 +218,17 @@ cMultiParm::operator const char* () const
 	  case kMT_Undef:
 		break;
 	  case kMT_Int:
-		snprintf(pszNumber, 63, "%d", i);
+		_snprintf(pszNumber, 63, "%d", i);
 		return pszNumber;
 	  case kMT_Boolean:
 		pszNumber[0] = (b) ? '1' : '0';
 		pszNumber[1] = '\0';
 	    return pszNumber;
 	  case kMT_Float:
-		snprintf(pszNumber, 63, "%0.12f", f);
+		_snprintf(pszNumber, 63, "%0.12f", f);
 		return pszNumber;
 	  case kMT_Vector:
-		snprintf(pszNumber, 63, "(%0.6f,%0.6f,%0.6f)", pVector->x, pVector->y, pVector->z);
+		_snprintf(pszNumber, 63, "(%0.6f,%0.6f,%0.6f)", pVector->x, pVector->y, pVector->z);
 		return pszNumber;
 	  case kMT_String:
 		return psz;
@@ -261,7 +263,7 @@ cMultiParm::operator bool () const
 	  case kMT_Undef:
 		break;
 	  case kMT_Boolean:
-		return b;
+		return (b != 0);
 	  case kMT_Int:
 		return (i != 0);
 	  case kMT_Float:

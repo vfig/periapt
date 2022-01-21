@@ -1,0 +1,132 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <TargetExt>.osm</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;PERIAPT_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)liblg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
+    <Link>
+      <TargetMachine>MachineX86</TargetMachine>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;PERIAPT_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)liblg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <TargetMachine>MachineX86</TargetMachine>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="liblg\iids.cpp" />
+    <ClCompile Include="liblg\lg.cpp" />
+    <ClCompile Include="liblg\scrmsgs.cpp" />
+    <ClCompile Include="periapt.cpp" />
+    <ClCompile Include="Script.cpp" />
+    <ClCompile Include="ScriptModule.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="bypass.asm">
+      <FileType>Document</FileType>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"> ml /c /Fo$(OutDir)\%(Filename).obj %(FullPath)</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'"> ml /Fo$(OutDir)\%(Filename).obj %(FullPath)</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)\%(Filename).obj</Outputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(OutDir)\%(Filename).obj</Outputs>
+    </CustomBuild>
+    <None Include="script.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="bypass.h" />
+    <ClInclude Include="liblg\lg\actreact.h" />
+    <ClInclude Include="liblg\lg\ai.h" />
+    <ClInclude Include="liblg\lg\config.h" />
+    <ClInclude Include="liblg\lg\convict.h" />
+    <ClInclude Include="liblg\lg\defs.h" />
+    <ClInclude Include="liblg\lg\dynarray.h" />
+    <ClInclude Include="liblg\lg\dynarray.hpp" />
+    <ClInclude Include="liblg\lg\editor.h" />
+    <ClInclude Include="liblg\lg\gen.h" />
+    <ClInclude Include="liblg\lg\graphics.h" />
+    <ClInclude Include="liblg\lg\iiddef.h" />
+    <ClInclude Include="liblg\lg\iids.h" />
+    <ClInclude Include="liblg\lg\input.h" />
+    <ClInclude Include="liblg\lg\interface.h" />
+    <ClInclude Include="liblg\lg\links.h" />
+    <ClInclude Include="liblg\lg\malloc.h" />
+    <ClInclude Include="liblg\lg\miss16.h" />
+    <ClInclude Include="liblg\lg\objects.h" />
+    <ClInclude Include="liblg\lg\objstd.h" />
+    <ClInclude Include="liblg\lg\propdefs.h" />
+    <ClInclude Include="liblg\lg\properties.h" />
+    <ClInclude Include="liblg\lg\quest.h" />
+    <ClInclude Include="liblg\lg\res.h" />
+    <ClInclude Include="liblg\lg\script.h" />
+    <ClInclude Include="liblg\lg\scrmanagers.h" />
+    <ClInclude Include="liblg\lg\scrmsgs.h" />
+    <ClInclude Include="liblg\lg\scrservices.h" />
+    <ClInclude Include="liblg\lg\sound.h" />
+    <ClInclude Include="liblg\lg\tools.h" />
+    <ClInclude Include="liblg\lg\types.h" />
+    <ClInclude Include="liblg\lg\win.h" />
+    <ClInclude Include="Script.h" />
+    <ClInclude Include="ScriptModule.h" />
+    <ClInclude Include="scriptvars.h" />
+    <ClInclude Include="t2types.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

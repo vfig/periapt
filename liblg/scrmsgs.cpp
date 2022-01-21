@@ -1,4 +1,6 @@
+#ifdef __GNUC__
 #pragma implementation "lg/scrmsgs.h"
+#endif
 
 #include "lg/objstd.h"
 #include "lg/interface.h"

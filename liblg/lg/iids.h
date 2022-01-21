@@ -1,5 +1,6 @@
 #ifndef _LG_IIDS_H
 #define _LG_IIDS_H
+extern "C" {
 extern  const GUID  IID_IGameShell;
 extern  const GUID  IID_IAISenses;
 extern  const GUID  IID_IAIMoveRegulator;
@@ -393,4 +394,5 @@ extern  const GUID  IID_IPropertyStats;
 extern  const GUID  IID_IDamageScriptService;
 extern  const GUID  IID_IInternalAI;
 extern  const GUID  IID_IAIFrozenProperty;
+}
 #endif

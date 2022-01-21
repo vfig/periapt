@@ -1,4 +1,4 @@
-typedef uint32_t t2id;
+typedef unsigned int t2id;
 typedef float t2float;
 typedef unsigned short t2angle;
 
@@ -39,76 +39,76 @@ typedef struct t2clipdata {
 
 typedef struct t2mmsmodel {
     char magic[4]; // "LGMM"
-    uint32_t version; // 1 or 2
+    unsigned int version; // 1 or 2
     float radius;
-    uint32_t flags;
-    uint32_t app_data;
-    uint8_t layout;
-    uint8_t segs;
-    uint8_t smatrs;
-    uint8_t smatsegs;
-    uint16_t pgons;
-    uint16_t verts;
-    uint16_t weights;
-    uint16_t pad;
-    uint32_t map_off;
-    uint32_t seg_off;
-    uint32_t smatr_off;
-    uint32_t smatseg_off;
-    uint32_t pgon_off;
-    uint32_t norm_off;
-    uint32_t vert_vec_off;
-    uint32_t vert_uvn_off;
-    uint32_t weight_off;
+    unsigned int flags;
+    unsigned int app_data;
+    unsigned char layout;
+    unsigned char segs;
+    unsigned char smatrs;
+    unsigned char smatsegs;
+    unsigned short pgons;
+    unsigned short verts;
+    unsigned short weights;
+    unsigned short pad;
+    unsigned int map_off;
+    unsigned int seg_off;
+    unsigned int smatr_off;
+    unsigned int smatseg_off;
+    unsigned int pgon_off;
+    unsigned int norm_off;
+    unsigned int vert_vec_off;
+    unsigned int vert_uvn_off;
+    unsigned int weight_off;
 } t2mmsmodel;
 
 typedef struct t2smatr_v1 {
     char name[16];
-    uint32_t handle;
+    unsigned int handle;
     float uv;
-    uint8_t mat_type;
-    uint8_t smatsegs;
-    uint8_t map_start;
-    uint8_t flags;
-    uint16_t pgons;
-    uint16_t pgon_start;
-    uint16_t verts;
-    uint16_t vert_start;
-    uint16_t weight_start;
-    uint16_t pad0;
+    unsigned char mat_type;
+    unsigned char smatsegs;
+    unsigned char map_start;
+    unsigned char flags;
+    unsigned short pgons;
+    unsigned short pgon_start;
+    unsigned short verts;
+    unsigned short vert_start;
+    unsigned short weight_start;
+    unsigned short pad0;
 } t2smatr_v1; /* 40 bytes */
 
 typedef struct t2smatr_v2 {
     char name[16];
-    uint32_t caps;
+    unsigned int caps;
     float alpha;
     float self_illum;
-    uint32_t pad0;
-    uint32_t handle;
+    unsigned int pad0;
+    unsigned int handle;
     float uv;
-    uint8_t mat_type;
-    uint8_t smatsegs;
-    uint8_t map_start;
-    uint8_t flags;
-    uint16_t pgons;
-    uint16_t pgon_start;
-    uint16_t verts;
-    uint16_t vert_start;
-    uint16_t weight_start;
-    uint16_t pad1;
+    unsigned char mat_type;
+    unsigned char smatsegs;
+    unsigned char map_start;
+    unsigned char flags;
+    unsigned short pgons;
+    unsigned short pgon_start;
+    unsigned short verts;
+    unsigned short vert_start;
+    unsigned short weight_start;
+    unsigned short pad1;
 } t2smatr_v2; /* 56 bytes */
 
 typedef struct t2material {
-    int32_t cache_index;
+    int cache_index;
     /* i dont care about the rest */
 } t2material;
 
 typedef struct t2cachedmaterial {
     IDirect3DBaseTexture9 *d3d_texture;
-    uint32_t pad0;
-    uint32_t handle; // t2material*
-    uint8_t pad1;
-    uint8_t pad2;
-    uint8_t pad3; // seems to be flags, but i dont care.
-    uint8_t pad4;
+    unsigned int pad0;
+    unsigned int handle; // t2material*
+    unsigned char pad1;
+    unsigned char pad2;
+    unsigned char pad3; // seems to be flags, but i dont care.
+    unsigned char pad4;
 } t2cachedmaterial;

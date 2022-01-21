@@ -26,7 +26,9 @@ interface IMalloc : IUnknown
 DEFINE_IIDSTRUCT(IMalloc,IID_IMalloc)
 */
 
+extern "C" {
 extern  const GUID  IID_IDebugMalloc;
+}
 interface IDebugMalloc : IMalloc
 {
 	STDMETHOD_(void*,AllocEx)(unsigned long,const char*,int) PURE;
@@ -44,7 +46,9 @@ interface IDebugMalloc : IMalloc
 DEFINE_IIDSTRUCT(IDebugMalloc,IID_IDebugMalloc)
 
 /*
+extern "C" {
 extern  const GUID  IID_IScriptModuleAlloc;
+}
 interface IScriptModuleAlloc : IMalloc
 {
 	STDMETHOD_(void*,AllocEx)(unsigned long,const char*,int) PURE;

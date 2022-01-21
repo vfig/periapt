@@ -16,7 +16,9 @@
 #include <lg/scrmsgs.h>
 
 
+extern "C" {
 extern  const GUID  IID_IScriptModule;
+}
 interface IScriptModule : IUnknown
 {
 	STDMETHOD_(const char*,GetName)(void) PURE;
@@ -27,7 +29,9 @@ interface IScriptModule : IUnknown
 DEFINE_IIDSTRUCT(IScriptModule,IID_IScriptModule)
 
 
+extern "C" {
 extern  const GUID  IID_IScript;
+}
 interface IScript : IUnknown
 {
 	STDMETHOD_(const char*,GetClassName)(void) PURE;

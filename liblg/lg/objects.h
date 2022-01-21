@@ -21,7 +21,9 @@ interface IIntProperty;
 interface ITagFile;
 
 
+extern "C" {
 extern  const GUID  IID_IObjectQuery;
+}
 interface IObjectQuery : IUnknown
 {
 	STDMETHOD_(int,Done)(void) PURE;
@@ -30,7 +32,9 @@ interface IObjectQuery : IUnknown
 };
 DEFINE_IIDSTRUCT(IObjectQuery,IID_IObjectQuery)
 
+extern "C" {
 extern  const GUID  IID_IObjectSystem;
+}
 struct sObjListenerDesc
 {
 };
@@ -97,7 +101,9 @@ interface IObjectNetworking : IUnknown
 };
 */
 
+extern "C" {
 extern  const GUID  IID_IDonorCache;
+}
 struct sDonorCacheParams
 {
 };
@@ -122,7 +128,9 @@ interface IDonorCache : IUnknown
 };
 DEFINE_IIDSTRUCT(IDonorCache,IID_IDonorCache)
 
+extern "C" {
 extern  const GUID  IID_IDonorQuery;
+}
 interface IDonorQuery : IUnknown
 {
 	STDMETHOD_(int,Done)(void) PURE;
@@ -132,7 +140,9 @@ interface IDonorQuery : IUnknown
 };
 DEFINE_IIDSTRUCT(IDonorQuery,IID_IDonorQuery)
 
+extern "C" {
 extern  const GUID  IID_IDamageModel;
+}
 struct sChainedEvent
 {
 };
@@ -159,7 +169,9 @@ interface IDamageModel : IUnknown
 };
 DEFINE_IIDSTRUCT(IDamageModel,IID_IDamageModel)
 
+extern "C" {
 extern  const GUID  IID_IContainSys;
+}
 struct sContainIter
 {
 	int zero;
@@ -198,7 +210,9 @@ interface IContainSys : IUnknown
 };
 DEFINE_IIDSTRUCT(IContainSys,IID_IContainSys)
 
+extern "C" {
 extern  const GUID  IID_IInventory;
+}
 /*
 enum eWhichInvObj
 {
@@ -227,14 +241,18 @@ interface  IInventory : IUnknown
 };
 DEFINE_IIDSTRUCT(IInventory,IID_IInventory)
 
+extern "C" {
 extern  const GUID  IID_IKeySys;
+}
 interface IKeySys : IUnknown
 {
 	STDMETHOD_(int,TryToUseKey)(int,int,eKeyUse);
 };
 DEFINE_IIDSTRUCT(IKeySys,IID_IKeySys)
 
+extern "C" {
 extern  const GUID  IID_ITrait;
+}
 // cBaseTrait, cNullTrait, cCachedTrait, cInheritedTrait, cUninheritedTrait, cPredicateTrait,
 interface ITrait : IUnknown
 {
@@ -249,7 +267,9 @@ interface ITrait : IUnknown
 DEFINE_IIDSTRUCT(ITrait,IID_ITrait)
 
 // Worth a shot
+extern "C" {
 extern  const GUID  IID_IAvatar;
+}
 interface IAvatar : IUnknown
 {
 	virtual unsigned long f0(void) = 0;

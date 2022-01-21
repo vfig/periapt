@@ -109,7 +109,6 @@
 #include <new>
 #include <exception>
 #include <string>
-#include <strings.h>
 #include <d3d9.h>
 
 #include "t2types.h"
@@ -220,7 +219,7 @@ bool DoesSignatureMatch(const ExeSignature *sig) {
     // Read memory
     UCHAR mem[ExeSignatureBytesMax];
     SIZE_T bytesRead = 0;
-    bool ok = ReadProcessMemory(hProcess,
+    BOOL ok = ReadProcessMemory(hProcess,
         (LPCVOID)(baseAddress+sig->offset), mem, ExeSignatureBytesMax, &bytesRead);
     if (!ok || bytesRead != ExeSignatureBytesMax) return false;
     // Apply fixups
@@ -274,8 +273,8 @@ static struct {
 } g_Periapt = { };
 
 // Functions to be called:
-t2position* __cdecl (*t2_ObjPosGet)(t2id obj);
-bool __cdecl (*t2_SphrSphereInWorld)(t2location *center_loc, float radius);
+t2position* (__cdecl *t2_ObjPosGet)(t2id obj);
+bool (__cdecl *t2_SphrSphereInWorld)(t2location *center_loc, float radius);
 
 // Data to be accessed:
 IDirect3DDevice9 **t2_d3d9device_ptr;
@@ -306,10 +305,10 @@ struct t2_modelname_vtable {
 
     DWORD reserved16;
     DWORD reserved17;
-    void __stdcall (*Set)(void* thisptr, t2id obj, const char* name);
+    void (__stdcall *Set)(void* thisptr, t2id obj, const char* name);
     DWORD reserved19;
 
-    BOOL __stdcall (*Get)(void* thisptr, t2id obj, const char** pName);
+    BOOL (__stdcall *Get)(void* thisptr, t2id obj, const char** pName);
 };
 
 const char* t2_modelname_Get(t2id obj) {
@@ -481,8 +480,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
 
     t2_ObjPosGet = (t2position*(*)(t2id))GameInfoTable.ObjPosGet;
     ADDR_ObjPosSetLocation = GameInfoTable.ObjPosSetLocation;
-    ADDR_ComputeCellForLocation = (uint32_t)GameInfoTable.ComputeCellForLocation;
-    t2_SphrSphereInWorld = (bool __cdecl (*)(t2location*,float))GameInfoTable.SphrSphereInWorld;
+    ADDR_ComputeCellForLocation = (unsigned int)GameInfoTable.ComputeCellForLocation;
+    t2_SphrSphereInWorld = (bool (__cdecl *)(t2location*,float))GameInfoTable.SphrSphereInWorld;
     t2_d3d9device_ptr = (IDirect3DDevice9**)GameInfoTable.d3d9device_ptr;
     t2_modelnameprop_ptr = (void*)GameInfoTable.modelnameprop;
     t2_portal_camera_pos_ptr = (t2position*)GameInfoTable.portal_camera_pos;
@@ -530,17 +529,17 @@ void disable_hooks() {
     printf("hooks disabled\n");
 }
 
-void patch_jmp(uint32_t jmp_address, uint32_t dest_address) {
-    const uint8_t jmp = 0xE9;
-    int32_t offset = (dest_address - (jmp_address+5));
+void patch_jmp(unsigned int jmp_address, unsigned int dest_address) {
+    const unsigned char jmp = 0xE9;
+    int offset = (dest_address - (jmp_address+5));
     hooks_spew("  offset: %08x (%d)\n", offset, offset);
-    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address, (uint32_t)&jmp, 1);
+    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address, (unsigned int)&jmp, 1);
     memcpy((void *)jmp_address, &jmp, 1);
-    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address+1, (uint32_t)&offset, 4);
+    hooks_spew("  memcpy %08x, %08x, %u\n", jmp_address+1, (unsigned int)&offset, 4);
     memcpy((void *)(jmp_address+1), &offset, 4);
 }
 
-void install_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t bypass, uint32_t size) {
+void install_hook(bool *hooked, unsigned int target, unsigned int trampoline, unsigned int bypass, unsigned int size) {
     if (! *hooked) {
         *hooked = true;
         hooks_spew("hooking target %08x, trampoline %08x, bypass %08x, size %u\n", target, trampoline, bypass, size);
@@ -571,7 +570,7 @@ void install_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t b
     }
 }
 
-void remove_hook(bool *hooked, uint32_t target, uint32_t trampoline, uint32_t bypass, uint32_t size) {
+void remove_hook(bool *hooked, unsigned int target, unsigned int trampoline, unsigned int bypass, unsigned int size) {
     (void)bypass; // Unused
     if (*hooked) {
         *hooked = false;
@@ -806,7 +805,7 @@ typedef enum RenderWorldMode {
 } RenderWorldMode;
 
 static struct {
-    uint32_t frame;
+    unsigned int frame;
     float frameTime;
     // TODO: rework isActive, isFading, isTransitioning into a single mode variable
     bool isActive;
@@ -1136,7 +1135,7 @@ static void DrawPeriapt(IDirect3DDevice9 *device, PeriaptMode mode) {
             // We can then modulate the dual view fading in or out by changing
             // the alpha test threshold.
             float t = g_State.fadeProgress;
-            if (g_State.isFadingOut) t = 1.0-t;
+            if (g_State.isFadingOut) t = 1.0f-t;
             int threshold = (int)(t*255.0f);
             // Test: always
             // Write: stencil 1
@@ -1381,7 +1380,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // The pow() brings the peak of the effect forward in time.
         float t = powf(g_State.transitionProgress, 0.5f);
         // A gentle slope up to 1 and back down to 0:
-        float curve = 0.5-0.5*cos(6.283185f*t);
+        float curve = 0.5f-0.5f*cos(6.283185f*t);
         zoom = zoom*(1.0f+TRANSITION_ZOOM_FACTOR*curve);
     }
 
@@ -1517,7 +1516,7 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
         g_State.part2Texture = NULL;
         for (int i=0; i<m->smatrs; ++i) {
             char *name;
-            uint32_t handle;
+            unsigned int handle;
             if (m->version==1) {
                 t2smatr_v1 *smatrs = (t2smatr_v1*)base;
                 name = smatrs[i].name;
@@ -1529,7 +1528,7 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
             }
 
             if (handle) {
-                int32_t i = ((t2material*)handle)->cache_index;
+                int i = ((t2material*)handle)->cache_index;
                 // The 'cache_index' is a pointer to something else before the
                 // texture is loaded in to d3d. I am guessing at the range of
                 // cached material handles here, but certainly no pointer will
@@ -1775,102 +1774,102 @@ bool hooked_mDrawTriangleLists;
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
     install_hook(&hooked_cam_render_scene,
-        (uint32_t)GameInfoTable.cam_render_scene,
-        (uint32_t)&TRAMPOLINE_cam_render_scene,
-        (uint32_t)&BYPASS_cam_render_scene,
+        (unsigned int)GameInfoTable.cam_render_scene,
+        (unsigned int)&TRAMPOLINE_cam_render_scene,
+        (unsigned int)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
     hooks_spew("Hooking cD8Renderer::Clear...\n");
     install_hook(&hooked_cD8Renderer_Clear,
-        (uint32_t)GameInfoTable.cD8Renderer_Clear,
-        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
-        (uint32_t)&BYPASS_cD8Renderer_Clear,
+        (unsigned int)GameInfoTable.cD8Renderer_Clear,
+        (unsigned int)&TRAMPOLINE_cD8Renderer_Clear,
+        (unsigned int)&BYPASS_cD8Renderer_Clear,
         GameInfoTable.cD8Renderer_Clear_preamble);
     hooks_spew("Hooking dark_render_overlays...\n");
     install_hook(&hooked_dark_render_overlays,
-        (uint32_t)GameInfoTable.dark_render_overlays,
-        (uint32_t)&TRAMPOLINE_dark_render_overlays,
-        (uint32_t)&BYPASS_dark_render_overlays,
+        (unsigned int)GameInfoTable.dark_render_overlays,
+        (unsigned int)&TRAMPOLINE_dark_render_overlays,
+        (unsigned int)&BYPASS_dark_render_overlays,
         GameInfoTable.dark_render_overlays_preamble);
     hooks_spew("Hooking rendobj_render_object...\n");
     install_hook(&hooked_rendobj_render_object,
-        (uint32_t)GameInfoTable.rendobj_render_object,
-        (uint32_t)&TRAMPOLINE_rendobj_render_object,
-        (uint32_t)&BYPASS_rendobj_render_object,
+        (unsigned int)GameInfoTable.rendobj_render_object,
+        (unsigned int)&TRAMPOLINE_rendobj_render_object,
+        (unsigned int)&BYPASS_rendobj_render_object,
         GameInfoTable.rendobj_render_object_preamble);
     hooks_spew("Hooking explore_portals...\n");
     install_hook(&hooked_explore_portals,
-        (uint32_t)GameInfoTable.explore_portals,
-        (uint32_t)&TRAMPOLINE_explore_portals,
-        (uint32_t)&BYPASS_explore_portals,
+        (unsigned int)GameInfoTable.explore_portals,
+        (unsigned int)&TRAMPOLINE_explore_portals,
+        (unsigned int)&BYPASS_explore_portals,
         GameInfoTable.explore_portals_preamble);
     hooks_spew("Hooking initialize_first_region_clip...\n");
     install_hook(&hooked_initialize_first_region_clip,
-        (uint32_t)GameInfoTable.initialize_first_region_clip,
-        (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
-        (uint32_t)&BYPASS_initialize_first_region_clip,
+        (unsigned int)GameInfoTable.initialize_first_region_clip,
+        (unsigned int)&TRAMPOLINE_initialize_first_region_clip,
+        (unsigned int)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
     hooks_spew("Hooking mm_hardware_render...\n");
     install_hook(&hooked_mm_hardware_render,
-        (uint32_t)GameInfoTable.mm_hardware_render,
-        (uint32_t)&TRAMPOLINE_mm_hardware_render,
-        (uint32_t)&BYPASS_mm_hardware_render,
+        (unsigned int)GameInfoTable.mm_hardware_render,
+        (unsigned int)&TRAMPOLINE_mm_hardware_render,
+        (unsigned int)&BYPASS_mm_hardware_render,
         GameInfoTable.mm_hardware_render_preamble);
     hooks_spew("Hooking mDrawTriangleLists...\n");
     install_hook(&hooked_mDrawTriangleLists,
-        (uint32_t)GameInfoTable.mDrawTriangleLists,
-        (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
-        (uint32_t)&BYPASS_mDrawTriangleLists,
+        (unsigned int)GameInfoTable.mDrawTriangleLists,
+        (unsigned int)&TRAMPOLINE_mDrawTriangleLists,
+        (unsigned int)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
 }
 
 void remove_all_hooks() {
     hooks_spew("Unhooking cam_render_scene...\n");
     remove_hook(&hooked_cam_render_scene,
-        (uint32_t)GameInfoTable.cam_render_scene,
-        (uint32_t)&TRAMPOLINE_cam_render_scene,
-        (uint32_t)&BYPASS_cam_render_scene,
+        (unsigned int)GameInfoTable.cam_render_scene,
+        (unsigned int)&TRAMPOLINE_cam_render_scene,
+        (unsigned int)&BYPASS_cam_render_scene,
         GameInfoTable.cam_render_scene_preamble);
     hooks_spew("Unhooking cD8Renderer::Clear...\n");
     remove_hook(&hooked_cD8Renderer_Clear,
-        (uint32_t)GameInfoTable.cD8Renderer_Clear,
-        (uint32_t)&TRAMPOLINE_cD8Renderer_Clear,
-        (uint32_t)&BYPASS_cD8Renderer_Clear,
+        (unsigned int)GameInfoTable.cD8Renderer_Clear,
+        (unsigned int)&TRAMPOLINE_cD8Renderer_Clear,
+        (unsigned int)&BYPASS_cD8Renderer_Clear,
         GameInfoTable.cD8Renderer_Clear_preamble);
     hooks_spew("Unhooking dark_render_overlays...\n");
     remove_hook(&hooked_dark_render_overlays,
-        (uint32_t)GameInfoTable.dark_render_overlays,
-        (uint32_t)&TRAMPOLINE_dark_render_overlays,
-        (uint32_t)&BYPASS_dark_render_overlays,
+        (unsigned int)GameInfoTable.dark_render_overlays,
+        (unsigned int)&TRAMPOLINE_dark_render_overlays,
+        (unsigned int)&BYPASS_dark_render_overlays,
         GameInfoTable.dark_render_overlays_preamble);
     hooks_spew("Unhooking rendobj_render_object...\n");
     remove_hook(&hooked_rendobj_render_object,
-        (uint32_t)GameInfoTable.rendobj_render_object,
-        (uint32_t)&TRAMPOLINE_rendobj_render_object,
-        (uint32_t)&BYPASS_rendobj_render_object,
+        (unsigned int)GameInfoTable.rendobj_render_object,
+        (unsigned int)&TRAMPOLINE_rendobj_render_object,
+        (unsigned int)&BYPASS_rendobj_render_object,
         GameInfoTable.rendobj_render_object_preamble);
     hooks_spew("Unhooking explore_portals...\n");
     remove_hook(&hooked_explore_portals,
-        (uint32_t)GameInfoTable.explore_portals,
-        (uint32_t)&TRAMPOLINE_explore_portals,
-        (uint32_t)&BYPASS_explore_portals,
+        (unsigned int)GameInfoTable.explore_portals,
+        (unsigned int)&TRAMPOLINE_explore_portals,
+        (unsigned int)&BYPASS_explore_portals,
         GameInfoTable.explore_portals_preamble);
     hooks_spew("Unhooking initialize_first_region_clip...\n");
     remove_hook(&hooked_initialize_first_region_clip,
-        (uint32_t)GameInfoTable.initialize_first_region_clip,
-        (uint32_t)&TRAMPOLINE_initialize_first_region_clip,
-        (uint32_t)&BYPASS_initialize_first_region_clip,
+        (unsigned int)GameInfoTable.initialize_first_region_clip,
+        (unsigned int)&TRAMPOLINE_initialize_first_region_clip,
+        (unsigned int)&BYPASS_initialize_first_region_clip,
         GameInfoTable.initialize_first_region_clip_preamble);
     hooks_spew("Unhooking mm_hardware_render...\n");
     remove_hook(&hooked_mm_hardware_render,
-        (uint32_t)GameInfoTable.mm_hardware_render,
-        (uint32_t)&TRAMPOLINE_mm_hardware_render,
-        (uint32_t)&BYPASS_mm_hardware_render,
+        (unsigned int)GameInfoTable.mm_hardware_render,
+        (unsigned int)&TRAMPOLINE_mm_hardware_render,
+        (unsigned int)&BYPASS_mm_hardware_render,
         GameInfoTable.mm_hardware_render_preamble);
     hooks_spew("Unhooking mDrawTriangleLists...\n");
     remove_hook(&hooked_mDrawTriangleLists,
-        (uint32_t)GameInfoTable.mDrawTriangleLists,
-        (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
-        (uint32_t)&BYPASS_mDrawTriangleLists,
+        (unsigned int)GameInfoTable.mDrawTriangleLists,
+        (unsigned int)&TRAMPOLINE_mDrawTriangleLists,
+        (unsigned int)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
 }
 
@@ -1899,7 +1898,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
     const char *message = pMsg->message;
 
     if (stricmp(message, "Sim") == 0) {
-        bool fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
+        BOOL fStarting = static_cast<sSimMsg*>(pMsg)->fStarting;
         printf(PREFIX "%s: fStarting=%s\n", message, (fStarting ? "true" : "false"));
         if (fStarting) {
             // TODO: later we might want the switch to control just the specific
@@ -1912,7 +1911,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
         }
     }
     else if (stricmp(message, "DarkGameModeChange") == 0) {
-        bool fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
+        BOOL fEntering = static_cast<sDarkGameModeScrMsg*>(pMsg)->fEntering;
         printf(PREFIX "%s: fEntering=%s\n", message, (fEntering ? "true" : "false"));
     }
     else if (stricmp(message, "BeginScript") == 0) {
@@ -2005,7 +2004,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
     (void)hModule; // Unused
     (void)lpReserved; // Unused
-    static bool didAllocConsole = false;
+    static BOOL didAllocConsole = false;
     switch (reason) {
     case DLL_PROCESS_ATTACH: {
         // Try to identify this exe.
@@ -2028,8 +2027,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             break;
         }
         // Decide accordingly how to handle console output.
-        bool shouldAllocConsole = (!isEditor || !isIdentified);
-        bool shouldRedirectStdout = (isEditor || shouldAllocConsole);
+        BOOL shouldAllocConsole = (!isEditor || !isIdentified);
+        BOOL shouldRedirectStdout = (isEditor || shouldAllocConsole);
         if (shouldAllocConsole) {
             didAllocConsole = AllocConsole();
         }
