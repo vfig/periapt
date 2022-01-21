@@ -43,7 +43,6 @@ CC = gcc
 CXX = g++
 ASM = as
 AR = ar
-DLLWRAP = dllwrap
 CP = cp
 
 DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAME=$(GAME)
@@ -63,7 +62,7 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base
+LDFLAGS = -mwindows -Wl,--enable-auto-image-base
 LIBDIRS = -L$(LGDIR) 
 # Ensure libstdc++ is linked statically so we don't need more dlls.
 LIBS = -l$(LGLIB) -luuid -static -lstdc++
@@ -71,10 +70,10 @@ INCLUDES = -I$(LGDIR)
 ASMFLAGS =
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
-CXXFLAGS =  -W -Wall -Wno-unused-parameter \
-		-std=c++11 -masm=att \
-		-fno-pcc-struct-return -mms-bitfields
-DLLFLAGS =  --target i386-mingw32
+CXXFLAGS = -W -Wall -Wno-unused-parameter \
+		-std=c++11 -march=i386 -masm=att \
+		-fno-pcc-struct-return -mms-bitfields \
+		-mno-tls-direct-seg-refs
 
 all: periapt.osm
 
@@ -85,12 +84,12 @@ all: periapt.osm
 	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
 
 %.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(CC) -shared --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 periapt.o: bypass.h t2types.h
 
 periapt.osm: periapt.o bypass.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(CC) -shared --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 $(LGDIR)/lib$(LGLIB).a:
 	$(MAKE) -C $(LGDIR)
