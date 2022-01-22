@@ -39,10 +39,8 @@ RUNDIR = e:\\dev\\TMA1.27
 RUN = $(RUNDIR)\\Thief2.exe
 
 CC = gcc
-CXX = g++
 ASM = as
 AR = ar
-DLLWRAP = dllwrap
 CP = cp
 
 DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAME=$(GAME)
@@ -50,13 +48,13 @@ DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAM
 ifdef DEBUG
 DEFINES := $(DEFINES) -D_DEBUG 
 ASMDEBUG =
-CXXDEBUG = -g -O0
+CDEBUG = -g -O0
 LDDEBUG = -g
 LGLIB = lg-d
 else
 DEFINES := $(DEFINES) -DNDEBUG
 ASMDEBUG =
-CXXDEBUG = -O3 
+CDEBUG = -O3 
 LDDEBUG =
 LGLIB = lg
 endif
@@ -69,10 +67,9 @@ INCLUDES = -I$(LGDIR)
 ASMFLAGS =
 # If you care for this... # -Wno-unused-variable 
 # A lot of the callbacks have unused parameters, so I turn that off.
-CXXFLAGS =  -W -Wall -Wno-unused-parameter \
-		-std=c++11 -masm=att \
+CFLAGS = -W -Wall -Wno-unused-parameter \
+		-std=c99 -masm=att \
 		-fno-pcc-struct-return -mms-bitfields
-DLLFLAGS =  --target i386-mingw32
 
 all: periapt.osm
 
