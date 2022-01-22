@@ -42,6 +42,7 @@ CC = gcc
 ASM = as
 AR = ar
 CP = cp
+LD = gcc -shared
 
 DEFINES = -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -DWIN32_LEAN_AND_MEAN -D_DARKGAME=$(GAME)
 
@@ -60,9 +61,9 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base 
+LDFLAGS = -mwindows -Wl,--enable-auto-image-base 
 LIBDIRS = -L$(LGDIR) 
-LIBS = -l$(LGLIB) -luuid -lstdc++
+LIBS = -l$(LGLIB) -luuid
 INCLUDES = -I$(LGDIR)
 ASMFLAGS =
 # If you care for this... # -Wno-unused-variable 
@@ -71,21 +72,25 @@ CFLAGS = -W -Wall -Wno-unused-parameter \
 		-std=c99 -masm=att \
 		-fno-pcc-struct-return -mms-bitfields
 
-all: periapt.osm
+all: empty.osm
+#periapt.osm
 
-%.o: %.cpp Makefile
-	$(CXX) $(CXXFLAGS) $(CXXDEBUG) $(DEFINES) $(INCLUDES) -o $@ -c $<
+%.o: %.c Makefile
+	$(CC) $(CFLAGS) $(CDEBUG) $(DEFINES) $(INCLUDES) -o $@ -c $<
 
 %.o: %.s Makefile
 	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
 
 %.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(LD) --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+
+empty.osm: empty.o
+	$(LD) --def script.def -o $@ $< $(LDFLAGS) $(LDDEBUG) $(LIBDIRS)
 
 periapt.o: bypass.h t2types.h
 
 periapt.osm: periapt.o bypass.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(DLLWRAP) $(DLLFLAGS) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(LD) --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 $(LGDIR)/lib$(LGLIB).a:
 	$(MAKE) -C $(LGDIR)
