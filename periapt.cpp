@@ -2069,7 +2069,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
                 info->name, info->version, (isEditor ? "EDITOR" : "GAME"));
         } else {
             printf(PREFIX "Cannot identify exe; must not continue!\n");
-            return false;
+            return FALSE;
         }
 
         LoadGameInfoTable(identity);
@@ -2093,5 +2093,5 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     //     printf(PREFIX "current thread: %u\n", (unsigned int)GetCurrentThreadId());
     // } break;
     }
-    return true;
+    return TRUE;
 }

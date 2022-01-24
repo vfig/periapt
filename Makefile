@@ -30,7 +30,8 @@
 
 srcdir = .
 
-DEBUG = 1
+# Ensure the same DEBUG flag is used for liblg!
+export DEBUG = 1
 GAME = 2
 
 LGDIR = liblg
@@ -62,9 +63,11 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base 
+# See `DLL BASE ADDRESS` in readme.txt for why this particular address.
+LDFLAGS = -mwindows -mdll -Wl,--image-base,0x2B000000
 LIBDIRS = -L$(LGDIR) 
-LIBS = -l$(LGLIB) -luuid -lstdc++
+# Ensure libstdc++ is linked statically so we don't need more dlls.
+LIBS = -l$(LGLIB) -luuid -static -lstdc++
 INCLUDES = -I$(LGDIR)
 ASMFLAGS =
 # If you care for this... # -Wno-unused-variable 
