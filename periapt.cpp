@@ -901,7 +901,9 @@ struct TerrainBatchDraw {
     // }
     UINT primitiveCount;
     struct TerrainVertex *primitiveZero;
+    UINT index; // for debugging
 };
+#define TERRAIN_BATCH_DRAW_SORTKEY_SIZE (offsetof(struct TerrainBatchDraw,primitiveCount))
 #define TERRAIN_BATCH_DRAW_CAPACITY 128
 #define TERRAIN_BATCH_PRIMITIVE_CAPACITY 1024
 #define TERRAIN_BATCH_VERTEX_CAPACITY (3*TERRAIN_BATCH_PRIMITIVE_CAPACITY)
@@ -909,8 +911,6 @@ static struct TerrainVertex g_AccumBufferVertices[TERRAIN_BATCH_VERTEX_CAPACITY]
 static struct TerrainVertex g_SortedBufferVertices[TERRAIN_BATCH_VERTEX_CAPACITY];
 static struct TerrainBatchBuffer g_TerrainAccumBuffer \
     = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_AccumBufferVertices };
-static struct TerrainBatchBuffer g_TerrainSortedBuffer \
-    = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_SortedBufferVertices };
 static UINT g_TerrainDrawCount;
 static UINT g_TerrainDrawCapacity = TERRAIN_BATCH_DRAW_CAPACITY;
 static struct TerrainBatchDraw g_TerrainDraw[TERRAIN_BATCH_DRAW_CAPACITY];
@@ -1361,9 +1361,31 @@ static void ResetTerrainDraws() {
     g_TerrainAccumBuffer.primitiveCount = 0;
 }
 
+static int CompareTerrainDraw(const void *p0, const void *p1) {
+    struct TerrainBatchDraw *draw0 = (struct TerrainBatchDraw*)p0;
+    struct TerrainBatchDraw *draw1 = (struct TerrainBatchDraw*)p1;
+    return memcmp(draw0, draw1, TERRAIN_BATCH_DRAW_SORTKEY_SIZE);
+}
+
 static void FlushTerrainDraws(IDirect3DDevice9 *device) {
-    //printf("Batch of %u draws\n", g_TerrainDrawCount);
+    // Sort the terrain draw calls
+    qsort(g_TerrainDraw, g_TerrainDrawCount, sizeof(g_TerrainDraw[0]),
+       CompareTerrainDraw);
+
+    // Copy the primitives now into sorted order...
+    UINT sortedPrimitiveCount = 0;
     for (UINT i=0, count=g_TerrainDrawCount; i<count; ++i) {
+        int j = 3*sortedPrimitiveCount;
+        UINT primitiveCount = g_TerrainDraw[i].primitiveCount;
+        struct TerrainVertex *src = g_TerrainDraw[i].primitiveZero;
+        struct TerrainVertex *dest = &g_SortedBufferVertices[j];
+        memcpy(dest, src, 3*primitiveCount*sizeof(struct TerrainVertex));
+        sortedPrimitiveCount += primitiveCount;
+    }
+
+    printf("Batch of %u draws\n", g_TerrainDrawCount);
+    for (UINT i=0, count=g_TerrainDrawCount; i<count; ++i) {
+        printf("  %d\n", g_TerrainDraw[i].index);
         device->SetTexture(0, g_TerrainDraw[i].texture0);
         device->SetTexture(1, g_TerrainDraw[i].texture1);
         device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
@@ -1419,6 +1441,7 @@ static void AppendTerrainDraw(IDirect3DDevice9 *device, D3DPRIMITIVETYPE Primiti
     device->GetTexture(1, &(draw->texture1));
     draw->primitiveCount = PrimitiveCount;
     draw->primitiveZero = dest;
+    draw->index = i;
     ++g_TerrainDrawCount;
 }
 
@@ -2210,6 +2233,7 @@ const unsigned int cScriptModule::sm_ScriptsArraySize = sizeof(sm_ScriptsArray)/
 /*** Entry point ***/
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <windows.h>
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
