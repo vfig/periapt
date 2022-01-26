@@ -863,6 +863,14 @@ struct PrimVertex {
     D3DCOLOR specular;
     float u,v;
 } __attribute__((aligned(4)));
+// FVF is hardcoded as D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX2
+// for the viewmodel, so we just use that layout here.
+struct TerrainVertex {
+    float x,y,z,w;
+    D3DCOLOR diffuse;
+    D3DCOLOR specular;
+    float u0,v0,u1,v1;
+} __attribute__((aligned(4)));
 // We save transformed vertices here every frame, so we can draw it our way.
 #define PERIAPT_PART_COUNT  4
 #define PERIAPT_CRYSTAL 0
@@ -881,12 +889,31 @@ static struct PrimVertex OverlayVertex[3*OVERLAY_VERTEX_COUNT];
 static UINT OverlayPrimitiveCount;
 
 #if BATCH_TERRAIN
-static struct {
-    UINT accumBufferPrimitiveCount;
-    struct PrimVertex *accumBuffer;
-    UINT drawBufferPrimitiveCount;
-    struct PrimVertex *drawBuffer;
-} g_TerrainBatch;
+struct TerrainBatchBuffer {
+    UINT primitiveCount;
+    UINT primitiveCapacity;
+    struct TerrainVertex *buffer;
+};
+struct TerrainBatchDraw {
+    // Sort key: {
+    IDirect3DBaseTexture9 *texture0;
+    IDirect3DBaseTexture9 *texture1;
+    // }
+    UINT primitiveCount;
+    struct TerrainVertex *primitiveZero;
+};
+#define TERRAIN_BATCH_DRAW_CAPACITY 128
+#define TERRAIN_BATCH_PRIMITIVE_CAPACITY 1024
+#define TERRAIN_BATCH_VERTEX_CAPACITY (3*TERRAIN_BATCH_PRIMITIVE_CAPACITY)
+static struct TerrainVertex g_AccumBufferVertices[TERRAIN_BATCH_VERTEX_CAPACITY];
+static struct TerrainVertex g_SortedBufferVertices[TERRAIN_BATCH_VERTEX_CAPACITY];
+static struct TerrainBatchBuffer g_TerrainAccumBuffer \
+    = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_AccumBufferVertices };
+static struct TerrainBatchBuffer g_TerrainSortedBuffer \
+    = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_SortedBufferVertices };
+static UINT g_TerrainDrawCount;
+static UINT g_TerrainDrawCapacity = TERRAIN_BATCH_DRAW_CAPACITY;
+static struct TerrainBatchDraw g_TerrainDraw[TERRAIN_BATCH_DRAW_CAPACITY];
 #endif
 
 void DrawTransitionOverlay(IDirect3DDevice9* device) {
@@ -1319,6 +1346,84 @@ static bool DoTransition() {
     }
 }
 
+/*** Batched Terrain draw ***/
+
+static bool TerrainDrawHasCapacity(UINT PrimitiveCount) {
+    return (
+        (g_TerrainDrawCount<g_TerrainDrawCapacity)
+        && (g_TerrainAccumBuffer.primitiveCount
+            < g_TerrainAccumBuffer.primitiveCapacity-PrimitiveCount)
+        );
+}
+
+static void ResetTerrainDraws() {
+    g_TerrainDrawCount = 0;
+    g_TerrainAccumBuffer.primitiveCount = 0;
+}
+
+static void FlushTerrainDraws(IDirect3DDevice9 *device) {
+    //printf("Batch of %u draws\n", g_TerrainDrawCount);
+    for (UINT i=0, count=g_TerrainDrawCount; i<count; ++i) {
+        device->SetTexture(0, g_TerrainDraw[i].texture0);
+        device->SetTexture(1, g_TerrainDraw[i].texture1);
+        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+            g_TerrainDraw[i].primitiveCount,
+            g_TerrainDraw[i].primitiveZero,
+            sizeof(struct TerrainVertex));
+    }
+    g_TerrainDrawCount = 0;
+    g_TerrainAccumBuffer.primitiveCount = 0;
+
+    /*
+    struct TerrainBatchBuffer {
+        UINT primitiveCount;
+        UINT primitiveCapacity;
+        struct TerrainVertex *buffer;
+    };
+    struct TerrainBatchDraw {
+        IDirect3DBaseTexture9 *texture;
+        UINT primitiveCount;
+        struct TerrainVertex *primitiveZero;
+    };
+    #define TERRAIN_BATCH_DRAW_CAPACITY 128
+    #define TERRAIN_BATCH_PRIMITIVE_CAPACITY 1024
+    #define TERRAIN_BATCH_VERTEX_CAPACITY (3*TERRAIN_BATCH_PRIMITIVE_CAPACITY)
+    static struct TerrainBatchBuffer g_TerrainAccumBuffer \
+        = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_AccumBufferVertices };
+    static struct TerrainBatchBuffer g_TerrainSortedBuffer \
+        = { 0, TERRAIN_BATCH_PRIMITIVE_CAPACITY, g_SortedBufferVertices };
+    static UINT g_TerrainDrawCount;
+    static UINT g_TerrainDrawCapacity = TERRAIN_BATCH_DRAW_CAPACITY;
+    static struct TerrainBatchDraw g_TerrainDraw[TERRAIN_BATCH_DRAW_CAPACITY];
+    */
+}
+
+static void AppendTerrainDraw(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
+    UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride)
+{
+    assert(PrimitiveType==D3DPT_TRIANGLELIST);
+    assert(VertexStreamZeroStride==sizeof(struct TerrainVertex));
+    assert(TerrainDrawHasCapacity(PrimitiveCount));
+    UINT i;
+
+    // Copy the primitives.
+    i = 3*g_TerrainAccumBuffer.primitiveCount;
+    struct TerrainVertex *dest = &g_TerrainAccumBuffer.buffer[i];
+    memcpy(dest, pVertexStreamZeroData, 3*PrimitiveCount*sizeof(struct TerrainVertex));
+    g_TerrainAccumBuffer.primitiveCount += PrimitiveCount;
+
+    // Add a draw.
+    i = g_TerrainDrawCount;
+    struct TerrainBatchDraw *draw = &g_TerrainDraw[i];
+    device->GetTexture(0, &(draw->texture0));
+    device->GetTexture(1, &(draw->texture1));
+    draw->primitiveCount = PrimitiveCount;
+    draw->primitiveZero = dest;
+    ++g_TerrainDrawCount;
+}
+
+
+/*** Hooked functions ***/
 
 extern "C"
 void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
@@ -1430,9 +1535,10 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     g_State.dontClearTarget = false;
     g_State.dontClearStencil = false;
     g_State.isRenderingTerrain = true;
-    printf("Begin -----------------\n");
+    ResetTerrainDraws();
+    //printf("Begin -----------------\n");
     RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCILREF_ZERO);
-    printf("End -------------------\n");
+    //printf("End -------------------\n");
 #else
     if (g_State.isTransitioning) {
         // We don't want cam_render_scene to clear the stencil buffer later, so
@@ -1495,7 +1601,9 @@ extern "C"
 void __cdecl HOOK_dark_render_overlays(void) {
 #if BATCH_TERRAIN
     g_State.isRenderingTerrain = false;
-    printf("Terrain done? Overlay time\n");
+    IDirect3DDevice9* device = *t2_d3d9device_ptr;
+    FlushTerrainDraws(device);
+    //printf("Terrain done? Overlay time\n");
 #endif
 #if ! BATCH_TERRAIN
     // Just don't render overlays in the dual view, unless we're transitioning.
@@ -1512,7 +1620,9 @@ extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
 #if BATCH_TERRAIN
     g_State.isRenderingTerrain = false;
-    printf("Terrain done? Object time\n");
+    IDirect3DDevice9* device = *t2_d3d9device_ptr;
+    FlushTerrainDraws(device);
+    //printf("Terrain done? Object time\n");
 #endif
     // Check if we are rendering the periapt object.
     g_State.isDrawingPeriapt = false;
@@ -1624,10 +1734,8 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
 
 #if BATCH_TERRAIN
-    // Okay, this doesnt work, this isnt the function that gets called for terrain!
-    if (g_State.isRenderingTerrain) {
-        printf("Draw(%u, %u)\n", PrimitiveType, PrimitiveCount);
-    }
+    // Okay, this isnt the function that gets called for terrain!
+    // But whatever, just dont do any other shenanigans for now.
     return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
         pVertexStreamZeroData, VertexStreamZeroStride);
 #endif
@@ -1646,7 +1754,7 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
         return S_OK;
     }
 
-    // From this point, we know we're rending the periapt, and its in the real.
+    // From this point, we know we're rendering the periapt, and its in the real.
 
     // Just some sanity checks.
     assert(PrimitiveType==D3DPT_TRIANGLELIST);
@@ -1758,11 +1866,22 @@ int __cdecl HOOK_mDrawTriangleLists2(IDirect3DDevice9 *device, D3DPRIMITIVETYPE 
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
 
 #if BATCH_TERRAIN
-    if (g_State.isRenderingTerrain) {
-        printf("Draw2(%u, %u)\n", PrimitiveType, PrimitiveCount);
+    bool intercept = ((PrimitiveType==D3DPT_TRIANGLELIST)
+        && (VertexStreamZeroStride==sizeof(struct TerrainVertex))
+        && g_State.isRenderingTerrain);
+    // printf("Draw(%u, %u,...,%u) - %s\n", PrimitiveType, PrimitiveCount, VertexStreamZeroStride,
+    //     (intercept?"intercepted":"SKIPPED"));
+    if (intercept) {
+        if (!TerrainDrawHasCapacity(PrimitiveCount)) {
+            FlushTerrainDraws(device);
+            assert(TerrainDrawHasCapacity(PrimitiveCount));
+        }
+        AppendTerrainDraw(device, PrimitiveType, PrimitiveCount,
+            pVertexStreamZeroData, VertexStreamZeroStride);
+    } else {
+        return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+            pVertexStreamZeroData, VertexStreamZeroStride);
     }
-    return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
-        pVertexStreamZeroData, VertexStreamZeroStride);
 #endif
     return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
         pVertexStreamZeroData, VertexStreamZeroStride);
