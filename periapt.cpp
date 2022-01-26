@@ -1368,6 +1368,8 @@ static int CompareTerrainDraw(const void *p0, const void *p1) {
 }
 
 static void FlushTerrainDraws(IDirect3DDevice9 *device) {
+    //printf("Flushing %u draws\n", g_TerrainDrawCount);
+
     // Sort the terrain draw calls
     qsort(g_TerrainDraw, g_TerrainDrawCount, sizeof(g_TerrainDraw[0]),
        CompareTerrainDraw);
@@ -1380,18 +1382,38 @@ static void FlushTerrainDraws(IDirect3DDevice9 *device) {
         struct TerrainVertex *src = g_TerrainDraw[i].primitiveZero;
         struct TerrainVertex *dest = &g_SortedBufferVertices[j];
         memcpy(dest, src, 3*primitiveCount*sizeof(struct TerrainVertex));
+        g_TerrainDraw[i].primitiveZero = dest;
         sortedPrimitiveCount += primitiveCount;
     }
 
-    printf("Batch of %u draws\n", g_TerrainDrawCount);
-    for (UINT i=0, count=g_TerrainDrawCount; i<count; ++i) {
-        printf("  %d\n", g_TerrainDraw[i].index);
-        device->SetTexture(0, g_TerrainDraw[i].texture0);
-        device->SetTexture(1, g_TerrainDraw[i].texture1);
-        device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
-            g_TerrainDraw[i].primitiveCount,
-            g_TerrainDraw[i].primitiveZero,
-            sizeof(struct TerrainVertex));
+    UINT batchDrawCount = 0;
+    UINT batchPrimitiveCount = 0;
+    struct TerrainVertex *batchPrimitiveZero = g_TerrainDraw[0].primitiveZero;
+    for (UINT i=1, start=0, count=g_TerrainDrawCount; i<count+1; ++i) {
+        if (i==count
+        || CompareTerrainDraw(&g_TerrainDraw[i], &g_TerrainDraw[start])!=0) {
+            if (batchPrimitiveCount>0) {
+                // printf("  Batch of %u draws (%u prims)\n",
+                //     batchDrawCount, batchPrimitiveCount);
+                device->SetTexture(0, g_TerrainDraw[start].texture0);
+                device->SetTexture(1, g_TerrainDraw[start].texture1);
+                device->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+                    batchPrimitiveCount,
+                    batchPrimitiveZero,
+                    sizeof(struct TerrainVertex));
+            }
+            if (i==count) break;
+
+            batchDrawCount = 0;
+            batchPrimitiveCount = 0;
+            batchPrimitiveZero = g_TerrainDraw[i].primitiveZero;
+            start = i;
+        }
+        if (i==count) break;
+
+        //printf("  %d\n", g_TerrainDraw[i].index);
+        ++batchDrawCount;
+        batchPrimitiveCount += g_TerrainDraw[i].primitiveCount;
     }
     g_TerrainDrawCount = 0;
     g_TerrainAccumBuffer.primitiveCount = 0;
