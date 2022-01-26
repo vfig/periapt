@@ -46,6 +46,12 @@ extern const uint32_t BYPASS_mDrawTriangleLists;
 extern const uint32_t TRAMPOLINE_mDrawTriangleLists;
 extern uint32_t RESUME_mDrawTriangleLists;
 
+int __cdecl HOOK_mDrawTriangleLists2(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
+    UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride);
+extern const uint32_t BYPASS_mDrawTriangleLists2;
+extern const uint32_t TRAMPOLINE_mDrawTriangleLists2;
+extern uint32_t RESUME_mDrawTriangleLists2;
+
 uint32_t ADDR_ComputeCellForLocation;
 extern int __cdecl CALL_ComputeCellForLocation(t2location* loc);
 

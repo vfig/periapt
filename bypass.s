@@ -43,6 +43,7 @@ To uninstall:
 	.global _bypass_enable
 	.global _RESUME_initialize_first_region_clip
 	.global _RESUME_mDrawTriangleLists
+	.global _RESUME_mDrawTriangleLists2
 
 _bypass_enable:
 	.byte 0x00
@@ -53,6 +54,8 @@ _RESUME_initialize_first_region_clip:
 _RESUME_mDrawTriangleLists:
 	.space	4, 0x00				# skip address
 
+_RESUME_mDrawTriangleLists2:
+	.space	4, 0x00				# skip address
 
 /* ------------------------------------------------------------------------*/
 
@@ -298,6 +301,30 @@ _BYPASS_mDrawTriangleLists:
 	call	_HOOK_mDrawTriangleLists	# call HOOK
 	add	sp, 20				# cleanup
 	jmp	dword ptr [_RESUME_mDrawTriangleLists]
+
+
+/* ------------------------------------------------------------------------*/
+
+# in mDrawTriangleLists2			# in media res:
+#						# params to DrawPrimitiveUp()
+#						# have just been pushed onto
+#						# the stack.
+
+	.extern _HOOK_mDrawTriangleLists2
+	.global _BYPASS_mDrawTriangleLists2
+	.global _TRAMPOLINE_mDrawTriangleLists2
+
+_TRAMPOLINE_mDrawTriangleLists2:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_BYPASS_mDrawTriangleLists2:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_mDrawTriangleLists2	#	.
+						# params are on stack already
+	call	_HOOK_mDrawTriangleLists2	# call HOOK
+	add	sp, 20				# cleanup
+	jmp	dword ptr [_RESUME_mDrawTriangleLists2]
 
 
 /* ------------------------------------------------------------------------*/

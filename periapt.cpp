@@ -117,6 +117,8 @@
 
 using namespace std;
 
+#define BATCH_TERRAIN 1
+
 #define HOOKS_SPEW 0
 #define PREFIX "periapt: "
 
@@ -351,6 +353,9 @@ struct GameInfo {
     DWORD mDrawTriangleLists;
     DWORD mDrawTriangleLists_preamble;
     DWORD mDrawTriangleLists_resume;
+    DWORD mDrawTriangleLists2;
+    DWORD mDrawTriangleLists2_preamble;
+    DWORD mDrawTriangleLists2_resume;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
@@ -378,6 +383,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // mDrawTriangleLists2
+        0,                  // mDrawTriangleLists2_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0, /* TODO */       // ComputeCellForLocation
@@ -399,6 +406,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // mDrawTriangleLists2
+        0,                  // mDrawTriangleLists2_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0, /* TODO */       // ComputeCellForLocation
@@ -420,6 +429,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x0020eaf0UL, 8,    // mm_hardware_render
         0x0020ce47UL, 6,    // mDrawTriangleLists
         0x0020ce4fUL,       // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // mDrawTriangleLists2
+        0,                  // mDrawTriangleLists2_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x000e06f0UL,       // ComputeCellForLocation
@@ -441,6 +452,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002e9ab0UL, 8,    // mm_hardware_render
         0x002e7a38UL, 6,    // mDrawTriangleLists
         0x002e7a40UL,       // mDrawTriangleLists_resume
+        0x002e7bb4UL, 6,    // mDrawTriangleLists2
+        0x002e7bbcUL,       // mDrawTriangleLists2_resume
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x00170240UL,       // ComputeCellForLocation
@@ -470,6 +483,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.mm_hardware_render, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists_resume, base);
+    fixup_addr(&GameInfoTable.mDrawTriangleLists2, base);
+    fixup_addr(&GameInfoTable.mDrawTriangleLists2_resume, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.ComputeCellForLocation, base);
@@ -489,6 +504,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     t2_matcache_ptr = (t2cachedmaterial*)GameInfoTable.matcache;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
     RESUME_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_resume;
+    RESUME_mDrawTriangleLists2 = GameInfoTable.mDrawTriangleLists2_resume;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -501,6 +517,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
     printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
     printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
+    printf("periapt: mDrawTriangleLists2 = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists2);
+    printf("periapt: mDrawTriangleLists2_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists2_resume);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: ADDR_ComputeCellForLocation = %08x\n", (unsigned int)ADDR_ComputeCellForLocation);
@@ -832,6 +850,9 @@ static struct {
     IDirect3DBaseTexture9 *overlayTexture;
     IDirect3DBaseTexture9 *part1Texture;
     IDirect3DBaseTexture9 *part2Texture;
+#if BATCH_TERRAIN
+    bool isRenderingTerrain;
+#endif
 } g_State = {};
 
 // FVF is hardcoded as D3DFVF_XYZRHW|D3DFVF_DIFFUSE|D3DFVF_SPECULAR|D3DFVF_TEX1
@@ -858,6 +879,15 @@ static D3DState PeriaptLastRenderState; // TODO: ditch this?
 #define OVERLAY_VERTEX_COUNT  4
 static struct PrimVertex OverlayVertex[3*OVERLAY_VERTEX_COUNT];
 static UINT OverlayPrimitiveCount;
+
+#if BATCH_TERRAIN
+static struct {
+    UINT accumBufferPrimitiveCount;
+    struct PrimVertex *accumBuffer;
+    UINT drawBufferPrimitiveCount;
+    struct PrimVertex *drawBuffer;
+} g_TerrainBatch;
+#endif
 
 void DrawTransitionOverlay(IDirect3DDevice9* device) {
     // TODO: allow the alpha threshold (or at least changes to it) to
@@ -1395,6 +1425,15 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
     }
 #endif
 
+#if BATCH_TERRAIN
+    // Render the real world normally.
+    g_State.dontClearTarget = false;
+    g_State.dontClearStencil = false;
+    g_State.isRenderingTerrain = true;
+    printf("Begin -----------------\n");
+    RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCILREF_ZERO);
+    printf("End -------------------\n");
+#else
     if (g_State.isTransitioning) {
         // We don't want cam_render_scene to clear the stencil buffer later, so
         // we need to do it now.
@@ -1440,6 +1479,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
             DrawPeriapt(device, PERIAPT_FACETS);
         }
     }
+#endif
 }
 
 extern "C"
@@ -1453,9 +1493,15 @@ void __stdcall HOOK_cD8Renderer_Clear(DWORD Count, CONST D3DRECT* pRects, DWORD 
 
 extern "C"
 void __cdecl HOOK_dark_render_overlays(void) {
+#if BATCH_TERRAIN
+    g_State.isRenderingTerrain = false;
+    printf("Terrain done? Overlay time\n");
+#endif
+#if ! BATCH_TERRAIN
     // Just don't render overlays in the dual view, unless we're transitioning.
     if (g_State.isRenderingDual && !g_State.isTransitioning)
         return;
+#endif
 
     g_State.isDrawingOverlays = true;
     ORIGINAL_dark_render_overlays();
@@ -1464,12 +1510,18 @@ void __cdecl HOOK_dark_render_overlays(void) {
 
 extern "C"
 void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
+#if BATCH_TERRAIN
+    g_State.isRenderingTerrain = false;
+    printf("Terrain done? Object time\n");
+#endif
     // Check if we are rendering the periapt object.
     g_State.isDrawingPeriapt = false;
+#if ! BATCH_TERRAIN
     if (g_Periapt.dualRender && g_State.isDrawingOverlays) {
         const char* name = t2_modelname_Get(obj);
         g_State.isDrawingPeriapt = (name && (stricmp(name, "periaptv") == 0));
     }
+#endif
 
     if (g_State.isDrawingPeriapt) {
         g_State.didDrawPeriapt = true;
@@ -1505,6 +1557,7 @@ void __cdecl HOOK_rendobj_render_object(t2id obj, UCHAR* clut, ULONG fragment) {
 
 extern "C"
 void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
+#if ! BATCH_TERRAIN
     if (g_State.isDrawingOverlays
     && g_State.isDrawingPeriapt
     && g_Periapt.dualRender) {
@@ -1562,13 +1615,22 @@ void __cdecl HOOK_mm_hardware_render(t2mmsmodel *m) {
     // We would reset g_State.verticesReady here too, but for the first half
     // of the transition, we need to use the vertices from the previous frame.
     g_State.partCount = 0;
-
+#endif
     ORIGINAL_mm_hardware_render(m);
 }
 
 extern "C"
 int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
     UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
+
+#if BATCH_TERRAIN
+    // Okay, this doesnt work, this isnt the function that gets called for terrain!
+    if (g_State.isRenderingTerrain) {
+        printf("Draw(%u, %u)\n", PrimitiveType, PrimitiveCount);
+    }
+    return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+        pVertexStreamZeroData, VertexStreamZeroStride);
+#endif
 
     // If we're not drawing the viewmodel, just do the original draw and stop.
     if (!g_State.isDrawingOverlays
@@ -1692,6 +1754,21 @@ int __cdecl HOOK_mDrawTriangleLists(IDirect3DDevice9 *device, D3DPRIMITIVETYPE P
 }
 
 extern "C"
+int __cdecl HOOK_mDrawTriangleLists2(IDirect3DDevice9 *device, D3DPRIMITIVETYPE PrimitiveType,
+    UINT PrimitiveCount, const void *pVertexStreamZeroData, UINT VertexStreamZeroStride) {
+
+#if BATCH_TERRAIN
+    if (g_State.isRenderingTerrain) {
+        printf("Draw2(%u, %u)\n", PrimitiveType, PrimitiveCount);
+    }
+    return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+        pVertexStreamZeroData, VertexStreamZeroStride);
+#endif
+    return device->DrawPrimitiveUP(PrimitiveType, PrimitiveCount,
+        pVertexStreamZeroData, VertexStreamZeroStride);
+}
+
+extern "C"
 void __cdecl HOOK_explore_portals(t2portalcell* cell) {
     if (g_Periapt.depthCull) {
         // Skip rendering far portals (that should be fogged out):
@@ -1771,6 +1848,7 @@ bool hooked_explore_portals;
 bool hooked_initialize_first_region_clip;
 bool hooked_mm_hardware_render;
 bool hooked_mDrawTriangleLists;
+bool hooked_mDrawTriangleLists2;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -1821,6 +1899,12 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
         (uint32_t)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
+    hooks_spew("Hooking mDrawTriangleLists2...\n");
+    install_hook(&hooked_mDrawTriangleLists2,
+        (uint32_t)GameInfoTable.mDrawTriangleLists2,
+        (uint32_t)&TRAMPOLINE_mDrawTriangleLists2,
+        (uint32_t)&BYPASS_mDrawTriangleLists2,
+        GameInfoTable.mDrawTriangleLists2_preamble);
 }
 
 void remove_all_hooks() {
@@ -1872,6 +1956,12 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
         (uint32_t)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
+    hooks_spew("Unhooking mDrawTriangleLists2...\n");
+    remove_hook(&hooked_mDrawTriangleLists2,
+        (uint32_t)GameInfoTable.mDrawTriangleLists2,
+        (uint32_t)&TRAMPOLINE_mDrawTriangleLists2,
+        (uint32_t)&BYPASS_mDrawTriangleLists2,
+        GameInfoTable.mDrawTriangleLists2_preamble);
 }
 
 /***************************************************************************/
@@ -1937,6 +2027,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
         printf(PREFIX "%s\n", message);
         disable_hooks();
     }
+#if ! BATCH_TERRAIN
     else if (stricmp(message, "Translocate") == 0) {
         printf(PREFIX "%s\n", message);
         bool ok = DoTransition();
@@ -1975,6 +2066,7 @@ long cScr_PeriaptControl::ReceiveMessage(sScrMsg* pMsg, sMultiParm* pReply, eScr
             g_Periapt.depthCullDistance = d;
         }
     }
+#endif
 
     return iRet;
 }
