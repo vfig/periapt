@@ -49,4 +49,9 @@ extern uint32_t RESUME_mDrawTriangleLists;
 uint32_t ADDR_ComputeCellForLocation;
 extern int __cdecl CALL_ComputeCellForLocation(t2location* loc);
 
+int __cdecl HOOK_rendobj_init_frame(void);
+extern const uint32_t BYPASS_rendobj_init_frame;
+extern const uint32_t TRAMPOLINE_rendobj_init_frame;
+extern uint32_t RESUME_rendobj_init_frame;
+
 }

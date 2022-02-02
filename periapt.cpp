@@ -351,6 +351,9 @@ struct GameInfo {
     DWORD mDrawTriangleLists;
     DWORD mDrawTriangleLists_preamble;
     DWORD mDrawTriangleLists_resume;
+    DWORD rendobj_init_frame;
+    DWORD rendobj_init_frame_preamble;
+    DWORD rendobj_init_frame_resume;
     // Functions to be called:
     DWORD ObjPosGet;
     DWORD ObjPosSetLocation;
@@ -378,6 +381,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // rendobj_init_frame
+        0,    /* TODO */    // rendobj_init_frame_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0, /* TODO */       // ComputeCellForLocation
@@ -399,6 +404,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0, 0, /* TODO */    // mm_hardware_render
         0, 0, /* TODO */    // mDrawTriangleLists
         0,                  // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // rendobj_init_frame
+        0,                  // rendobj_init_frame_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0, /* TODO */       // ComputeCellForLocation
@@ -420,6 +427,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x0020eaf0UL, 8,    // mm_hardware_render
         0x0020ce47UL, 6,    // mDrawTriangleLists
         0x0020ce4fUL,       // mDrawTriangleLists_resume
+        0, 0, /* TODO */    // rendobj_init_frame
+        0,                  // rendobj_init_frame_resume
         0,                  // ObjPosGet
         0,                  // ObjPosSetLocation
         0x000e06f0UL,       // ComputeCellForLocation
@@ -441,6 +450,8 @@ static const GameInfo PerIdentityGameTable[ExeIdentityCount] = {
         0x002e9ab0UL, 8,    // mm_hardware_render
         0x002e7a38UL, 6,    // mDrawTriangleLists
         0x002e7a40UL,       // mDrawTriangleLists_resume
+        0x002932e4UL, 6,    // rendobj_init_frame
+        0x00293301UL,       // rendobj_init_frame_resume
         0x001e4680UL,       // ObjPosGet
         0x001e49e0UL,       // ObjPosSetLocation
         0x00170240UL,       // ComputeCellForLocation
@@ -470,6 +481,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     fixup_addr(&GameInfoTable.mm_hardware_render, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists, base);
     fixup_addr(&GameInfoTable.mDrawTriangleLists_resume, base);
+    fixup_addr(&GameInfoTable.rendobj_init_frame, base);
+    fixup_addr(&GameInfoTable.rendobj_init_frame_resume, base);
     fixup_addr(&GameInfoTable.ObjPosGet, base);
     fixup_addr(&GameInfoTable.ObjPosSetLocation, base);
     fixup_addr(&GameInfoTable.ComputeCellForLocation, base);
@@ -489,6 +502,7 @@ void LoadGameInfoTable(ExeIdentity identity) {
     t2_matcache_ptr = (t2cachedmaterial*)GameInfoTable.matcache;
     RESUME_initialize_first_region_clip = GameInfoTable.initialize_first_region_clip_resume;
     RESUME_mDrawTriangleLists = GameInfoTable.mDrawTriangleLists_resume;
+    RESUME_rendobj_init_frame = GameInfoTable.rendobj_init_frame_resume;
 
 #if HOOKS_SPEW
     printf("periapt: cam_render_scene = %08x\n", (unsigned int)GameInfoTable.cam_render_scene);
@@ -501,6 +515,8 @@ void LoadGameInfoTable(ExeIdentity identity) {
     printf("periapt: mm_hardware_render = %08x\n", (unsigned int)GameInfoTable.mm_hardware_render);
     printf("periapt: mDrawTriangleLists = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists);
     printf("periapt: mDrawTriangleLists_resume = %08x\n", (unsigned int)GameInfoTable.mDrawTriangleLists_resume);
+    printf("periapt: rendobj_init_frame = %08x\n", (unsigned int)GameInfoTable.rendobj_init_frame);
+    printf("periapt: rendobj_init_frame_resume = %08x\n", (unsigned int)GameInfoTable.rendobj_init_frame_resume);
     printf("periapt: t2_ObjPosGet = %08x\n", (unsigned int)t2_ObjPosGet);
     printf("periapt: ADDR_ObjPosSetLocation = %08x\n", (unsigned int)ADDR_ObjPosSetLocation);
     printf("periapt: ADDR_ComputeCellForLocation = %08x\n", (unsigned int)ADDR_ComputeCellForLocation);
@@ -824,6 +840,7 @@ static struct {
     bool didDrawPeriapt;
     bool dontClearTarget;
     bool dontClearStencil;
+    bool dontClearObjectVisibility;
     bool texturesReady;
     bool verticesReady;
     int partCount;
@@ -1408,6 +1425,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
 
         g_State.dontClearTarget = true;
         g_State.dontClearStencil = true;
+        g_State.dontClearObjectVisibility = false;
         RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCILREF_REAL);
         g_State.dontClearTarget = false;
         g_State.dontClearStencil = false;
@@ -1415,6 +1433,7 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // Render the real world normally.
         g_State.dontClearTarget = false;
         g_State.dontClearStencil = false;
+        g_State.dontClearObjectVisibility = false;
         RenderWorld(device, pos, zoom, RENDER_WORLD_REAL, STENCILREF_ZERO);
     }
 
@@ -1427,9 +1446,11 @@ void __cdecl HOOK_cam_render_scene(t2position* pos, double zoom) {
         // put in the stencil, so we prevent clearing the stencil too.
         g_State.dontClearTarget = true;
         g_State.dontClearStencil = true;
+        g_State.dontClearObjectVisibility = true;
         RenderWorld(device, pos, zoom, RENDER_WORLD_DUAL, STENCILREF_DUAL);
         g_State.dontClearTarget = false;
         g_State.dontClearStencil = false;
+        g_State.dontClearObjectVisibility = false;
     }
 
     if (g_State.didDrawPeriapt) {
@@ -1758,6 +1779,27 @@ void __cdecl HOOK_initialize_first_region_clip(int w, int h, t2clipdata *clip) {
     clip->br = clip->r + clip->b;
 }
 
+extern "C"
+int __cdecl HOOK_rendobj_init_frame(void) {
+    // Normally the 'object was rendered' table is cleared within
+    // rendobj_init_frame(). This is used to avoid updating tweqs
+    // that aren't visible and so on.
+    //
+    // The problem is that rendering the scene the second time for
+    // the periapt would clear the table, which meant that tweqs in
+    // the main scene wouldn't get updated.
+    //
+    // So here (with the aid of our bypass function) we decide whether
+    // to allow the table clear to happen (return nonzero) or to
+    // skip it (return 0).
+    //
+    if (g_State.dontClearObjectVisibility) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
 /***************************************************************************/
 /*** Hooking and unhooking ***/
 
@@ -1771,6 +1813,7 @@ bool hooked_explore_portals;
 bool hooked_initialize_first_region_clip;
 bool hooked_mm_hardware_render;
 bool hooked_mDrawTriangleLists;
+bool hooked_rendobj_init_frame;
 
 void install_all_hooks() {
     hooks_spew("Hooking cam_render_scene...\n");
@@ -1821,6 +1864,12 @@ void install_all_hooks() {
         (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
         (uint32_t)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
+    hooks_spew("Hooking rendobj_init_frame...\n");
+    install_hook(&hooked_rendobj_init_frame,
+        (uint32_t)GameInfoTable.rendobj_init_frame,
+        (uint32_t)&TRAMPOLINE_rendobj_init_frame,
+        (uint32_t)&BYPASS_rendobj_init_frame,
+        GameInfoTable.rendobj_init_frame_preamble);
 }
 
 void remove_all_hooks() {
@@ -1872,6 +1921,12 @@ void remove_all_hooks() {
         (uint32_t)&TRAMPOLINE_mDrawTriangleLists,
         (uint32_t)&BYPASS_mDrawTriangleLists,
         GameInfoTable.mDrawTriangleLists_preamble);
+    hooks_spew("Unhooking rendobj_init_frame...\n");
+    remove_hook(&hooked_rendobj_init_frame,
+        (uint32_t)GameInfoTable.rendobj_init_frame,
+        (uint32_t)&TRAMPOLINE_rendobj_init_frame,
+        (uint32_t)&BYPASS_rendobj_init_frame,
+        GameInfoTable.rendobj_init_frame_preamble);
 }
 
 /***************************************************************************/

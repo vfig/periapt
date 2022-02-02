@@ -43,6 +43,7 @@ To uninstall:
 	.global _bypass_enable
 	.global _RESUME_initialize_first_region_clip
 	.global _RESUME_mDrawTriangleLists
+	.global _RESUME_rendobj_init_frame
 
 _bypass_enable:
 	.byte 0x00
@@ -53,6 +54,8 @@ _RESUME_initialize_first_region_clip:
 _RESUME_mDrawTriangleLists:
 	.space	4, 0x00				# skip address
 
+_RESUME_rendobj_init_frame:
+	.space  4, 0x00				# skip address
 
 /* ------------------------------------------------------------------------*/
 
@@ -313,3 +316,30 @@ _CALL_ComputeCellForLocation:
 	mov	eax, dword ptr [esp+0x04]	# swizzle args to custom convention
 	call	dword ptr [_ADDR_ComputeCellForLocation]	# call original
 	ret					#	.
+
+
+/* ------------------------------------------------------------------------*/
+
+# in rendobj_init_frame()			# in media res:
+#						# at the site of the call to
+#						# g_RendObjVisible.ClearAll()
+
+	.extern _HOOK_rendobj_init_frame
+	.global _BYPASS_rendobj_init_frame
+	.global _TRAMPOLINE_rendobj_init_frame
+
+_TRAMPOLINE_rendobj_init_frame:
+	.space	6, 0x90				# preamble
+	.space	5, 0x90				# jmp REMAINDER
+
+_BYPASS_rendobj_init_frame:
+	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
+	jz	_TRAMPOLINE_rendobj_init_frame	#	.
+	call	_HOOK_rendobj_init_frame	# call HOOK
+	sub	eax, eax			# if HOOK returns nonzero:
+	jnz	_TRAMPOLINE_rendobj_init_frame  #   do the original call,
+	sub	esp, 12				# else: pretend we pushed the
+						# arguments (as the cleanup for
+						# the memset call happens a
+						# little later on),
+	jmp	dword ptr [_RESUME_rendobj_init_frame]		# and skip it.
