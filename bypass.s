@@ -336,7 +336,7 @@ _BYPASS_rendobj_init_frame:
 	test	byte ptr [_bypass_enable], 0xff	# if disabled, jmp TRAMPOLINE
 	jz	_TRAMPOLINE_rendobj_init_frame	#	.
 	call	_HOOK_rendobj_init_frame	# call HOOK
-	sub	eax, eax			# if HOOK returns nonzero:
+	test	eax, eax			# if HOOK returns nonzero:
 	jnz	_TRAMPOLINE_rendobj_init_frame  #   do the original call,
 	sub	esp, 12				# else: pretend we pushed the
 						# arguments (as the cleanup for
