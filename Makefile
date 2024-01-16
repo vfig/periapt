@@ -63,8 +63,7 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-# See `DLL BASE ADDRESS` in readme.txt for why this particular address.
-LDFLAGS = -mwindows -mdll -Wl,--image-base,0x2B000000
+LDFLAGS = -mwindows -mdll -Wl,--enable-auto-image-base
 LIBDIRS = -L$(LGDIR) 
 # Ensure libstdc++ is linked statically so we don't need more dlls.
 LIBS = -l$(LGLIB) -luuid -static -lstdc++

@@ -29,6 +29,11 @@
 #include <lg/scrmanagers.h>
 #include <lg/malloc.h>
 
+/* Disable static TLS initialization. See readme.txt for details. */
+extern "C" {
+	const void *__dyn_tls_init_callback = NULL;
+}
+
 IMalloc *g_pMalloc = NULL;
 IScriptMan *g_pScriptManager = NULL;
 MPrintfProc g_pfnMPrintf = NULL;

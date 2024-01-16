@@ -17,11 +17,13 @@ KNOWN BUGS
 * Too many to list! This is a work in progress.
 
 
-DLL BASE ADDRESS
-----------------
+DLL LOAD FAILURES AND TLS
+-------------------------
 
-We specify a custom base address, hoping to maximise the chance that the
-.osm can be loaded without relocation. Here's why:
+A sporadic issue existed where this .osm would suddenly begin failing to load;
+sometimes restarting DromEd.exe/Thief.exe would resolve it, but sometimes it
+would only resolve after restarting Windows. It turned out this failure would
+only happen when the .osm was relocated away from its default base address.
 
 The mingw build does its tls (thread local storage) initialisation via the
 static tls section of the dll. This is _not_ a supported configuration for
@@ -90,19 +92,34 @@ MinGW bug 1557, it is libmingw32 that is the culprit:
     10 .tls 00000018 00000000 00000000 00000fb6 2**2
     tlsthrd.o: file format pe-i386
 
-So, the possible solutions are:
+The possible solutions I identified were:
 
     * rebuild libmingw32 to not use thread local storage (iffy)
     * port the dll to visual c++
     * ignore it and hope it goes away
 
-In classic Benny fashion, I am choosing to do the latter. Well, I am not
-entirely ignoring it; I am instead defining a default base address that I
-am _guessing_ will not often clash and require relocation. This is based
-only on a handful of runs I have done on my machine, which honestly is
-a pretty poor sample size. However, come beta time, I can perhaps write
-a small utility to dump the loaded modules of Thief2.exe and their base
-addresses, and make the .mis detect if periapt.osm did not load, and include
-a message asking players to run the utility (without exiting thief!) and
-notify me of its output. That would give me more data to choose an even
-less likely to clash address.
+Previously, I chose the third option, specifying a custom base address for the
+.osm, hoping to minimize the chance of an address space clash that would require
+relocation.
+
+However, Xanfre informed me that it was possible to prevent the static TLS
+initialization without messing with libmingw32:
+
+    While I am aware that you are not focused on this right now, regarding static TLS causing a protection fault during relocation, it is possible to resolve this without going through the pain of moving to Visual C++ or hacking away at the MinGW runtime. The culprit here is, in fact, the MinGW runtime, specifically the object tlssup.o being brought in with the CRT initialization routines, which, unsurprisingly, uses TLS. In particular, it is the TLS initialization hook (__dyn_tls_init_callback) that does this. This is a function pointer that is called during startup if it is non-null. It is declared extern in crtdll.c, though the only definition that will satisfy it is in tlssup.c. This means that the hook is always called, and the noted object is also always brought into the binary. Other CRT implementations provide an additional uninitialized definition, over which the non-zero definition takes precedence if user code employs any __declspec(thread) identifiers. For MinGW, however, it is sufficient to simply supply a null definition, which will prevent the hook from being called and tlssup.o from being brought in by the linker. Consequently, simply adding the following somewhere in the sources will resolve this, with ScriptModule.cpp likely being a sensible choice.
+
+    const void *__dyn_tls_init_callback = NULL;
+
+    This should mitigate the need to carefully choose a base address, as relocation can now succeed. Analyzing the resulting binary should also show that no .tls section is present anymore.
+
+So at the moment, I have defined __dyn_tls_init_callback in ScriptModule.cpp as
+suggested, and confirmed that the resulting .osm no longer contains the static
+.tls section. And reverted back to the auto base address generation in the
+build (though this is not strictly necessary).
+
+After a few brief test runs, the issue has not yet appeared again, but this is
+not sufficient to show that it is fixed, as it only happened sporadically, and
+usually after a significant number of game mode/edit mode cycles. Additionally,
+it would be necessary to demonstrate that the .osm *is* getting relocated
+and still loading successfully, in order to have confidence that the issue is
+resolved. Building with a fixed base address that is known to clash is one way
+to force a relocation to occur.
