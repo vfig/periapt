@@ -62,7 +62,8 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-LDFLAGS = -mwindows -Wl,--enable-auto-image-base
+# TEMP: pick a base address that will almost certainly force relocation:
+LDFLAGS = -mwindows -Wl,--image-base,0x56B00000
 LIBDIRS = -L$(LGDIR) 
 LIBS = -l$(LGLIB) -luuid -lstdc++
 INCLUDES = -I$(LGDIR)
