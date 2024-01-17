@@ -62,8 +62,7 @@ LGLIB = lg
 endif
 
 ARFLAGS = rc
-# TEMP: pick a base address that will almost certainly force relocation:
-LDFLAGS = -mwindows -Wl,--image-base,0x56B00000
+LDFLAGS = -mwindows -Wl,--enable-auto-image-base
 LIBDIRS = -L$(LGDIR) 
 # Ensure libstdc++ is linked statically so we don't need more dlls.
 LIBS = -l$(LGLIB) -luuid -static -lstdc++
