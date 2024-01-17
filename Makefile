@@ -64,8 +64,7 @@ endif
 ARFLAGS = rc
 LDFLAGS = -mwindows -Wl,--enable-auto-image-base
 LIBDIRS = -L$(LGDIR) 
-# Ensure libstdc++ is linked statically so we don't need more dlls.
-LIBS = -l$(LGLIB) -luuid -static -lstdc++
+LIBS = -l$(LGLIB) -luuid -lstdc++
 INCLUDES = -I$(LGDIR)
 ASMFLAGS =
 # If you care for this... # -Wno-unused-variable 
