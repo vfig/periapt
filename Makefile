@@ -84,12 +84,12 @@ all: periapt.osm
 	$(ASM) $(ASMFLAGS) $(ASMDEBUG) -o $@ -c $<
 
 %.osm: %.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(CC) -shared --def script.def -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(CC) -shared -o $@ $< ScriptModule.o Script.o $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 periapt.o: bypass.h t2types.h
 
 periapt.osm: periapt.o bypass.o ScriptModule.o Script.o $(LGDIR)/lib$(LGLIB).a
-	$(CC) -shared --def script.def -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
+	$(CC) -shared -o $@ $^ $(LDFLAGS) $(LDDEBUG) $(LIBDIRS) $(LIBS)
 
 $(LGDIR)/lib$(LGLIB).a:
 	$(MAKE) -C $(LGDIR)
